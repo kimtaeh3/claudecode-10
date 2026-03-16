@@ -1,0 +1,44 @@
+<nav>
+
+    <div>
+        <ul>
+          {% if home %}
+          <img class="image" src="{{ url_for('static', filename='/img/Q360.gif')}}" alt="q360auto">
+
+          {% else %}
+          <img src="{{ url_for('static', filename='/img/Q360-Image.png')}}" alt="q360auto">
+          
+          {% endif %}
+
+          <li><a class="home" href="/">Home</a></li>
+
+          {% if weeklyReport %}
+            <li><a href="/weekly-report">Weekly Report</a></li>
+
+          {% else %}
+            <div class="dropdown_container">
+              <button class="dropbtn">Actions 
+                <i class="fa fa-caret-down"></i>
+              </button>
+
+              <div class="dropdown-content">
+                <a href="/viewhours">View Hours</a>
+                <a href="/submit">Submit Hours</a>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if loginVal %}
+          <li style="float:right"><a href="/logout">Logout </a></li>
+                 
+          {% else %}
+          <li style="float:right"><a href="/login">Login </a></li> 
+
+          {% endif %}
+
+          <li style="float:right"><a type="button" onclick=history.back()>Go Back</a></li>
+
+        </ul>
+      </div>
+
+</nav>

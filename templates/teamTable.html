@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+{% block content %}
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Q360 Automation Tool</title>
+  <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1" />
+  <script charset="utf-8" src="js/index.js"></script>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='teamTable.css')}}" />
+</head>
+<script>
+</script>
+
+<body>
+
+  {% for user in content %}
+  <button type="button" class="collapsible">{{user}}</button>
+  <div class="center">
+    <h1>{{user}}</h1>
+    <h2>Time Period: {{startDate}} - {{endDate}}</h2>
+    <h3>Total Hours: {{content[user]["totalHours"]}}</h3>
+
+    <div class="table">
+      <table class="content-table">
+        <thead>
+          <tr>
+            <th>START DATE</th>
+            <th>END DATE</th>
+            <th>HOURS</th>
+            <th>CATEGORY</th>
+            <th>PROJECT</th>
+            <th>DESCRIPTION</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for record in content[user]["userReport"] %}
+          <tr>
+            <td>{{ record.startDate }}</td>
+            <td>{{ record.endDate }}</td>
+            <td>{{ record.hours }}</td>
+            <td>{{ record.category }}</td>
+            <td>{{ record.project }}</td>
+            <td>{{ record.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- <script>
+    var coll = document.getElementsByClassName("collapsible");
+    var i;
+    
+    for (i = 0; i < coll.length; i++) {
+      coll[i].addEventListener("click", function() {
+        this.classList.toggle("active");
+        var content = this.nextElementSibling;
+        if (content.style.display === "block") {
+          content.style.display = "none";
+        } else {
+          content.style.display = "block";
+        }
+      });
+    }
+    </script> -->
+
+  <script>
+    document.querySelectorAll('.collapsible').forEach(button => {
+      button.addEventListener('click', () => {
+        // const collapsibleContent = button.nextElementSibling;
+
+        button.classList.toggle('collapsible--active');
+
+        // if(button.classList.contains('collapsible--active')){
+        //     collapsibleContent.style.maxHeight = collapsibleContent.scrollHeight + 'px';
+        // } else{
+        //     collapsibleContent.style.maxHeight = 0;
+        // }
+      });
+    });
+  </script>
+  <script>
+    // (function () {
+    //   let weeklyReport = window.location.href + "/weekly-report";
+    //   document.getElementById("weekly-report").setAttribute("href", weeklyReport);
+    // })();
+  </script>
+</body>
+
+</html>
+{% endblock %}

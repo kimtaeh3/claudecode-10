@@ -1,0 +1,33 @@
+body{
+    background: linear-gradient(to bottom,#045891,rgb(159, 190, 211));
+    height: 100vh;
+    overflow: hidden;
+  }
+
+
+  .center_container {
+    position: absolute;
+    top: 30%;
+    left: 25%;
+    width: 800px;
+    height: 300px;
+    display: inline-block;
+    text-align: center;
+    font-family: "Poppins", sans-serif;
+    color: black;
+  }
+
+  .pageTitle {
+      font-weight: bold;
+      font-size: 40px;
+      margin-top: 30px;
+  }
+
+  .errorText {
+    font-weight: bold;
+    font-size: 30px;
+  }
+
+  .descrText {
+    font-size: 20px;
+  }
