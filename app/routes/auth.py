@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for
 from app.services.q360 import Q360Service
+from app.db import get_db
 
 bp = Blueprint('auth', __name__)
 
@@ -29,7 +30,13 @@ def login():
                 session.clear()
                 session['user_id'] = user_id
                 session['password'] = password
-                return redirect(url_for('hours.view'))
+                db = get_db()
+                db.execute(
+                    'INSERT INTO login_log (username, ip_address) VALUES (?, ?)',
+                    (user_id, request.remote_addr)
+                )
+                db.commit()
+                return redirect(url_for('hours.submit'))
             else:
                 error = 'Invalid credentials. Please try again.'
         except Exception:

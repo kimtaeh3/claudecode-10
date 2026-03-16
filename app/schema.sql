@@ -1,3 +1,11 @@
+-- Login audit log
+CREATE TABLE IF NOT EXISTS login_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    username   TEXT    NOT NULL,
+    logged_in_at TEXT  NOT NULL DEFAULT (datetime('now','localtime')),
+    ip_address TEXT
+);
+
 -- Team members (replaces accounts.csv)
 CREATE TABLE IF NOT EXISTS team_member (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
