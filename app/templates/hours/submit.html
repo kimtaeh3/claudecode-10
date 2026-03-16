@@ -12,12 +12,20 @@
       {% if is_admin %}
       <div class="mb-3">
         <label class="form-label">Submit on behalf of (User ID)</label>
-        <input type="text" name="target_user" class="form-control"
-               hx-get="{{ url_for('hours.projects') }}"
-               hx-trigger="change delay:500ms"
-               hx-target="#project-select"
-               hx-include="[name='target_user']"
-               placeholder="Leave blank for yourself">
+        <div class="input-group">
+          <input type="text" name="target_user" id="target_user" class="form-control"
+                 placeholder="Type user ID, leave blank for yourself"
+                 autocomplete="off">
+          <button type="button" class="btn btn-outline-secondary"
+                  hx-get="{{ url_for('hours.projects') }}"
+                  hx-trigger="click"
+                  hx-target="#project-select"
+                  hx-include="#target_user"
+                  hx-indicator="#proj-spinner">
+            Refresh Projects
+          </button>
+        </div>
+        <div class="form-text">Press <strong>Refresh Projects</strong> after entering a user ID.</div>
       </div>
       {% endif %}
 

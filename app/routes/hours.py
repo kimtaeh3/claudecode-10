@@ -58,7 +58,10 @@ def table():
 @bp.route('/projects')
 @login_required
 def projects():
-    user_id = request.args.get('user', session['user_id'])
+    # accept ?user= (lazy load) or ?target_user= (admin on-behalf)
+    user_id = (request.args.get('target_user') or
+               request.args.get('user') or
+               session['user_id'])
     try:
         svc = _svc()
         projects = svc.get_projects(user_id)
