@@ -1,0 +1,10 @@
+services:
+  web:
+    build: .
+    ports:
+      - "${HOST_PORT:-8080}:80"
+    env_file:
+      - .env
+    volumes:
+      - ./q360test_db.db:/app/q360test_db.db
+    restart: unless-stopped
