@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Team Management{% endblock %}
+{% block content %}
+<h4 class="mb-4">Team Management</h4>
+
+<div class="row">
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-header">Add Member</div>
+      <div class="card-body">
+        <form hx-post="{{ url_for('admin.add_user') }}"
+              hx-target="#members-table"
+              hx-on::after-request="this.reset()">
+          <div class="mb-2">
+            <input type="text" name="username" class="form-control" placeholder="Q360 User ID" required>
+          </div>
+          <div class="mb-2">
+            <input type="text" name="team" class="form-control" placeholder="Team name" required>
+          </div>
+          <div class="mb-2">
+            <input type="email" name="email" class="form-control" placeholder="Email (optional)">
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Add</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-8">
+    <div id="members-table">
+      {% include 'admin/_members_table.html' %}
+    </div>
+  </div>
+</div>
+{% endblock %}

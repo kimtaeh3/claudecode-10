@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Forecast{% endblock %}
+{% block content %}
+<h4 class="mb-4">Forecast</h4>
+{% if rows %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover table-bordered">
+    <thead class="table-dark">
+      <tr>
+        <th>ID</th><th>Progress</th><th>Task</th><th>Customer</th><th>SoW</th>
+        <th>Project</th><th>Team</th><th>PM</th><th>Lead</th>
+        <th>Role</th><th>Rate</th><th>%</th><th>Alloc</th><th>Con</th>
+        <th>Forecast</th><th>Rem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.forecast_id }}</td>
+        <td><span class="badge {% if r.progress == 'DONE' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ r.progress }}</span></td>
+        <td>{{ r.task_id }}</td>
+        <td>{{ r.customer }}</td>
+        <td>{{ r.sow }}</td>
+        <td>{{ r.project_name }}</td>
+        <td>{{ r.team }}</td>
+        <td>{{ r.pm }}</td>
+        <td>{{ r.team_lead }}</td>
+        <td>{{ r.role }}</td>
+        <td>{{ r.hrs_rate }}</td>
+        <td>{{ r.perc }}</td>
+        <td>{{ r.alloc }}</td>
+        <td>{{ r.con }}</td>
+        <td>{{ r.forecast }}</td>
+        <td>{{ r.rem }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted">No forecast data found for your account.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,13 @@
+{% if errors %}
+<div class="alert alert-danger">
+  <strong>Submission failed</strong>
+  <ul class="mb-0 mt-1">
+    {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</div>
+{% else %}
+<div class="alert alert-success">
+  <i class="bi bi-check-circle-fill me-2"></i>
+  Successfully created <strong>{{ submitted }}</strong> timebill{{ 's' if submitted != 1 }}.
+</div>
+{% endif %}

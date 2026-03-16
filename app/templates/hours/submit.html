@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Submit Hours{% endblock %}
+{% block content %}
+<h4 class="mb-4">Submit Hours</h4>
+
+<div class="row">
+  <div class="col-lg-7">
+    <form hx-post="{{ url_for('hours.submit_action') }}"
+          hx-target="#submit-result"
+          hx-indicator="#spinner">
+
+      {% if is_admin %}
+      <div class="mb-3">
+        <label class="form-label">Submit on behalf of (User ID)</label>
+        <input type="text" name="target_user" class="form-control"
+               hx-get="{{ url_for('hours.projects') }}"
+               hx-trigger="change delay:500ms"
+               hx-target="#project-select"
+               hx-include="[name='target_user']"
+               placeholder="Leave blank for yourself">
+      </div>
+      {% endif %}
+
+      <div class="mb-3">
+        <label class="form-label">Project</label>
+        <select name="task_number" id="project-select" class="form-select" required>
+          {% for description, key in project_list %}
+          <option value="{{ key }}">{{ description }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {% if is_admin %}
+      <div class="mb-3">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-select">
+          <option value="">Auto (from task)</option>
+          {% for c in categories %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="mb-3">
+        <label class="form-label">Company</label>
+        <select name="company" class="form-select">
+          {% for c in companies %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Entry type</label>
+        <div class="d-flex gap-3">
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="entry" value="Single" id="single" checked>
+            <label class="form-check-label" for="single">Single</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="entry" value="Multiple" id="multiple">
+            <label class="form-check-label" for="multiple">Multiple days</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Mode</label>
+        <div class="d-flex gap-3">
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="mode" value="time" id="mtime" checked
+                   onchange="toggleMode('time')">
+            <label class="form-check-label" for="mtime">Start/End time</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="mode" value="hours" id="mhours"
+                   onchange="toggleMode('hours')">
+            <label class="form-check-label" for="mhours">Hours total</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Time mode -->
+      <div id="mode-time">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label">Start date</label>
+            <input type="date" name="start_date" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Start time</label>
+            <input type="time" name="start_time" class="form-control" value="09:00">
+          </div>
+          <div class="col-6">
+            <label class="form-label">End date</label>
+            <input type="date" name="end_date" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">End time</label>
+            <input type="time" name="end_time" class="form-control" value="17:00">
+          </div>
+        </div>
+      </div>
+
+      <!-- Hours mode -->
+      <div id="mode-hours" style="display:none">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label">Start date</label>
+            <input type="date" name="start_date" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">End date</label>
+            <input type="date" name="end_date" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Start time</label>
+            <input type="time" name="start_time" class="form-control" value="09:00">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Hours</label>
+            <input type="number" name="hours_log" class="form-control" min="1" max="10" value="8">
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" name="weekends" id="weekends">
+        <label class="form-check-label" for="weekends">Include weekends</label>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Note</label>
+        <input type="text" name="note" class="form-control" value="POWERED BY Q360 AUTO APP">
+      </div>
+
+      <div class="d-flex align-items-center gap-3">
+        <button type="submit" class="btn btn-primary">Submit Hours</button>
+        <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary"></span>
+      </div>
+    </form>
+  </div>
+
+  <div class="col-lg-5 mt-4 mt-lg-0">
+    <div id="submit-result"></div>
+  </div>
+</div>
+
+<script>
+function toggleMode(mode) {
+  document.getElementById('mode-time').style.display = mode === 'time' ? '' : 'none';
+  document.getElementById('mode-hours').style.display = mode === 'hours' ? '' : 'none';
+}
+</script>
+{% endblock %}

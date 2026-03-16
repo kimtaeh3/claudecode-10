@@ -2,12 +2,16 @@ services:
   web:
     build: .
     ports:
-      - "${HOST_PORT:-8080}:80"
+      - "${HOST_PORT:-8080}:8080"
     environment:
       - SECRET_KEY=${SECRET_KEY}
       - EMAIL_ADDRESS=${EMAIL_ADDRESS}
       - EMAIL_PASSWORD=${EMAIL_PASSWORD}
       - DOCKER_PAT=${DOCKER_PAT}
+      - DATABASE=/app/data/q360.db
     volumes:
-      - ./q360test_db.db:/app/q360test_db.db
+      - q360_data:/app/data
     restart: unless-stopped
+
+volumes:
+  q360_data:

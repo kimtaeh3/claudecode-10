@@ -1,0 +1,24 @@
+<table class="table table-sm table-hover">
+  <thead class="table-light">
+    <tr><th>Username</th><th>Team</th><th>Email</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for m in members %}
+    <tr>
+      <td>{{ m.username }}</td>
+      <td>{{ m.team }}</td>
+      <td>{{ m.email or '—' }}</td>
+      <td>
+        <button class="btn btn-danger btn-sm"
+                hx-delete="{{ url_for('admin.delete_user', member_id=m.id) }}"
+                hx-target="#members-table"
+                hx-confirm="Remove {{ m.username }}?">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted text-center">No members yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

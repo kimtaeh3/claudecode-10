@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}View Hours{% endblock %}
+{% block content %}
+<h4 class="mb-4">View Hours</h4>
+
+<form hx-get="{{ url_for('hours.table') }}"
+      hx-target="#hours-result"
+      hx-indicator="#spinner"
+      class="row g-3 mb-4">
+
+  <div class="col-md-3">
+    <label class="form-label">Team</label>
+    <select name="team" class="form-select" onchange="toggleUserField(this.value)">
+      <option value="Single">Single User</option>
+      {% for t in teams %}
+        <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3" id="user-field">
+    <label class="form-label">User ID</label>
+    <input type="text" name="user" class="form-control" placeholder="e.g. jdoe">
+  </div>
+
+  <div class="col-md-2">
+    <label class="form-label">Start</label>
+    <input type="date" name="start" id="start" class="form-control" required>
+  </div>
+
+  <div class="col-md-2">
+    <label class="form-label">End</label>
+    <input type="date" name="end" id="end" class="form-control" required>
+  </div>
+
+  <div class="col-md-2 d-flex align-items-end gap-2">
+    <button type="submit" class="btn btn-primary">Search</button>
+    <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary ms-1"></span>
+  </div>
+
+  <div class="col-12">
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setWeek()">This Week</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setMonth()">This Month</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setYear()">This Year</button>
+    </div>
+  </div>
+</form>
+
+<div id="hours-result">
+  <p class="text-muted">Select a date range and click Search.</p>
+</div>
+{% endblock %}
