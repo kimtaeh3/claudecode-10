@@ -3,8 +3,11 @@ services:
     build: .
     ports:
       - "${HOST_PORT:-8080}:80"
-    env_file:
-      - .env
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - EMAIL_ADDRESS=${EMAIL_ADDRESS}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - DOCKER_PAT=${DOCKER_PAT}
     volumes:
       - ./q360test_db.db:/app/q360test_db.db
     restart: unless-stopped
