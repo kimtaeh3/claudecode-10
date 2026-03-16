@@ -23,11 +23,15 @@
 
       <div class="mb-3">
         <label class="form-label">Project</label>
-        <select name="task_number" id="project-select" class="form-select" required>
-          {% for description, key in project_list %}
-          <option value="{{ key }}">{{ description }}</option>
-          {% endfor %}
+        <select name="task_number" id="project-select" class="form-select" required
+                hx-get="{{ url_for('hours.projects') }}"
+                hx-trigger="load"
+                hx-indicator="#proj-spinner">
+          <option disabled selected>Loading projects…</option>
         </select>
+        <span id="proj-spinner" class="htmx-indicator text-muted small ms-1">
+          <span class="spinner-border spinner-border-sm"></span> Fetching projects…
+        </span>
       </div>
 
       {% if is_admin %}

@@ -72,14 +72,7 @@ def projects():
 @login_required
 def submit():
     is_admin = session['user_id'] == 'demoq360billing'
-    try:
-        svc = _svc()
-        projects = svc.get_projects()
-        project_list = [(v['description'], k) for k, v in projects.items()][1:]
-    except Exception:
-        project_list = []
     return render_template('hours/submit.html',
-                           project_list=project_list,
                            categories=CATEGORIES,
                            companies=COMPANIES,
                            is_admin=is_admin)

@@ -17,6 +17,23 @@ function setYear() {
   document.getElementById('start').value = `${y}-01-01`;
   document.getElementById('end').value   = `${y}-12-31`;
 }
+// Block all clicks during HTMX requests (except project lazy-load on submit page)
+const overlay = document.getElementById('htmx-overlay');
+if (overlay) {
+  document.body.addEventListener('htmx:beforeRequest', (e) => {
+    if (e.detail.requestConfig.verb !== 'get' ||
+        !e.detail.elt.id.includes('project-select')) {
+      overlay.classList.add('active');
+    }
+  });
+  document.body.addEventListener('htmx:afterRequest', () => {
+    overlay.classList.remove('active');
+  });
+  document.body.addEventListener('htmx:responseError', () => {
+    overlay.classList.remove('active');
+  });
+}
+
 function toggleUserField(val) {
   document.getElementById('user-field').style.display = val === 'Single' ? '' : 'none';
 }

@@ -1,3 +1,18 @@
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: inline-block; }
 .htmx-request.htmx-indicator { display: inline-block; }
+
+#htmx-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  cursor: wait;
+}
+#htmx-overlay.active {
+  display: flex;
+}
