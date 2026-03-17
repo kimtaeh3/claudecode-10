@@ -215,12 +215,6 @@ def _parse_excel(file, default_q360ids=None):
     else:
         df = pd.read_excel(file, engine='openpyxl', sheet_name=0)
 
-    if 'Username' not in df.columns:
-        raise ValueError(
-            f"Missing required 'Username' column. Found columns: {', '.join(df.columns.tolist())}. "
-            "Ensure the exported file includes the Username column (Q360 user ID, e.g. 'gsasi')."
-        )
-
     from collections import defaultdict
 
     task_rows = []
@@ -230,7 +224,15 @@ def _parse_excel(file, default_q360ids=None):
         username = str(row.get('Username', '') or '').strip()
         employee = str(row.get('Employee', '') or '').strip()
         if not username or username == 'nan':
-            continue
+            # Derive username from Employee full name: first letter + last name
+            if employee and employee != 'nan':
+                parts = employee.strip().split()
+                if len(parts) >= 2:
+                    username = (parts[0][0] + parts[-1]).lower()
+                else:
+                    continue
+            else:
+                continue
 
         week_val = row.get('Week')
         if week_val is None or str(week_val) == 'nan':

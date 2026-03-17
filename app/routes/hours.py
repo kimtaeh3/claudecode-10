@@ -142,7 +142,7 @@ def submit_action():
     task_number = f.get('task_number', '')
     entry = f.get('entry', 'Single')
     mode = f.get('mode', 'time')  # 'time' or 'hours'
-    note = f.get('note', 'POWERED BY Q360 AUTO APP')
+    note = f.get('note') or None
     company = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
     include_weekends = f.get('weekends') == 'on'
     target_user = f.get('target_user') or None
@@ -153,6 +153,7 @@ def submit_action():
     errors = []
 
     try:
+        import traceback
         if mode == 'time':
             start_date = f['start_date']
             start_time = f['start_time']
@@ -215,6 +216,9 @@ def submit_action():
                     submitted += 1
 
     except Exception as ex:
-        errors.append(str(ex))
+        errors.append(traceback.format_exc())
 
-    return render_template('hours/_submit_result.html', submitted=submitted, errors=errors)
+    try:
+        return render_template('hours/_submit_result.html', submitted=submitted, errors=errors)
+    except Exception as ex:
+        return f'<div class="alert alert-danger">Render error: {ex}</div>'
