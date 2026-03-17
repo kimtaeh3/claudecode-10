@@ -39,13 +39,18 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache,mode=max
 
-      - name: Deploy to Portainer (pull latest image)
+      - name: Deploy to Portainer (force specific image tag)
         run: |
           RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
             "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}?endpointId=${{ secrets.PORTAINER_ENDPOINT_ID }}" \
             -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{
+              \"env\": [
+                {\"name\": \"IMAGE_TAG\", \"value\": \"${{ github.run_number }}\"},
+                {\"name\": \"SECRET_KEY\", \"value\": \"${{ secrets.SECRET_KEY }}\"},
+                {\"name\": \"HOST_PORT\", \"value\": \"8080\"}
+              ],
               \"pullImage\": true,
               \"prune\": false
             }")
