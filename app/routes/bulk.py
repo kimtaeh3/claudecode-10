@@ -355,17 +355,21 @@ def parse():
                     if desc:
                         r['customer'] = desc
                     continue
-                best_rzk, best_score = None, 0.0
+                best_rzk, best_score, first_rzk = None, 0.0, None
                 for rzk, item in live.items():
                     if Q360Service._is_admin_project(item.get('title', '')):
                         continue
+                    if first_rzk is None:
+                        first_rzk = rzk
                     score = _match_score(r.get('customer', ''), r.get('project', ''),
                                          item.get('description', ''))
                     if score > best_score:
                         best_score, best_rzk = score, rzk
-                if best_rzk and best_score >= 0.4:
-                    item = live[best_rzk]
-                    r['q360id']          = best_rzk
+                # Always pick best match (or first project if no text match)
+                chosen = best_rzk or first_rzk
+                if chosen:
+                    item = live[chosen]
+                    r['q360id']          = chosen
                     r['customer']        = item.get('description', '').strip()
                     r['category']        = item.get('category', '') or DEFAULT_CATEGORY
                     r['needs_attention'] = False

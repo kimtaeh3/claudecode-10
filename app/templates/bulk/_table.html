@@ -155,12 +155,7 @@
                       data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
                       {% if sel %}selected{% endif %}>{{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}</option>
             {% endfor %}
-            {% if not ns2.matched and row.customer %}
-              {% set lbl = row.customer ~ (' — ' ~ row.project if row.project else '') %}
-              <option value="__current__" selected data-q360="{{ row.q360id }}" data-cat="{{ row.category }}">
-                {{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}
-              </option>
-            {% endif %}
+            {# No __current__ fallback — live Q360 projects are always used #}
           </select>
           {% if row.project_guessed %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
         </td>
