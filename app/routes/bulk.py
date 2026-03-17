@@ -215,6 +215,12 @@ def _parse_excel(file, default_q360ids=None):
     else:
         df = pd.read_excel(file, engine='openpyxl', sheet_name=0)
 
+    if 'Username' not in df.columns:
+        raise ValueError(
+            f"Missing required 'Username' column. Found columns: {', '.join(df.columns.tolist())}. "
+            "Ensure the exported file includes the Username column (Q360 user ID, e.g. 'gsasi')."
+        )
+
     from collections import defaultdict
 
     task_rows = []
