@@ -13,10 +13,13 @@
       <thead class="table-dark" style="position:sticky;top:0">
         <tr>
           <th>Employee</th>
-          <th>Q360 ID</th>
+          <th>Project (Q360 ID)</th>
           <th>Category</th>
+          <th>Company</th>
           <th>Day</th>
           <th>Date</th>
+          <th class="text-center">Start</th>
+          <th class="text-center">End</th>
           <th class="text-center">Hours</th>
           <th class="text-center">In System</th>
         </tr>
@@ -28,10 +31,13 @@
             {% set existing_h = existing.get(key) %}
             <tr>
               <td class="small text-nowrap">{{ e.username }}</td>
-              <td class="small">{{ e.q360id }}</td>
+              <td class="small text-nowrap">{{ e.project ~ ' (' ~ e.q360id ~ ')' if e.project else e.q360id }}</td>
               <td class="small">{{ e.category }}</td>
+              <td class="small text-nowrap">{{ e.company }}</td>
               <td class="small">{{ d.day }}</td>
               <td class="small">{{ d.date }}</td>
+              <td class="small text-center">{{ d.start_time }}</td>
+              <td class="small text-center">{{ d.end_time }}</td>
               <td class="small text-center">{{ d.hours }}</td>
               <td class="text-center">
                 {% if existing_h is none %}
@@ -51,7 +57,7 @@
         {% endfor %}
         {% if skipped %}
           <tr class="table-light">
-            <td colspan="7" class="small text-muted py-1 px-2">
+            <td colspan="10" class="small text-muted py-1 px-2">
               <span class="badge bg-secondary me-1">skipped</span>
               {{ skipped | length }} row(s) have no Q360 ID and will not be submitted:
               {{ skipped | map(attribute='username') | unique | join(', ') }}
