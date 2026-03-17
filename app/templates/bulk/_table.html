@@ -161,16 +161,6 @@
                 {{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}
               </option>
             {% endif %}
-            {% if default_types %}
-            <optgroup label="─── Default Types ───">
-              {% for dt in default_types %}
-              <option value="__dt_{{ loop.index0 }}"
-                      data-q360="{{ dt.q360id }}" data-cat="">
-                {{ dt.label }} — {{ dt.project[:50] }}{% if dt.project|length > 50 %}…{% endif %}
-              </option>
-              {% endfor %}
-            </optgroup>
-            {% endif %}
           </select>
           {% if row.project_guessed %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
         </td>
@@ -516,7 +506,6 @@ async function _addRowImpl(username, employee, weekNum, insertBeforeEl) {
   const ACTIVE_WEEKS   = {{ all_weeks | tojson }};
   const CATEGORIES     = {{ categories | tojson }};
   const DEFAULT_CAT    = {{ default_category | tojson }};
-  const DEFAULT_TYPES  = {{ default_types | tojson }};
 
   // Day cells
   const dayCells = ACTIVE_DAYS.map(d =>
@@ -591,18 +580,6 @@ async function _addRowImpl(username, employee, weekNum, insertBeforeEl) {
       sel.appendChild(o);
     });
 
-    if (DEFAULT_TYPES.length) {
-      const grp = document.createElement('optgroup');
-      grp.label = '─── Default Types ───';
-      DEFAULT_TYPES.forEach((dt, i) => {
-        const o = document.createElement('option');
-        o.value = `__dt_${i}`;
-        o.dataset.q360 = dt.q360id;
-        o.textContent = `${dt.label} — ${dt.project}`;
-        grp.appendChild(o);
-      });
-      sel.appendChild(grp);
-    }
 
     const customOpt = document.createElement('option');
     customOpt.value = '__custom__';
@@ -628,12 +605,6 @@ function applyProjectChoice(sel) {
   if (val === '') return;
   const q360Field = tr.querySelector('.q360id-field');
   if (!q360Field) return;
-  // Default type: q360id stored in data-q360
-  if (val.startsWith('__dt_')) {
-    const opt = sel.options[sel.selectedIndex];
-    q360Field.value = opt.dataset.q360 || '';
-    return;
-  }
   // Live project: option value IS the Q360 task number
   q360Field.value = val;
 }

@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 from flask import Blueprint, render_template, request, session
 
-from app.db import get_db
 from app.routes.auth import login_required
 from app.services.q360 import Q360Service, CATEGORIES, COMPANIES
 
@@ -14,20 +13,6 @@ DAY_COLS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 DAY_OFFSETS = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6}
 DEFAULT_CATEGORY = 'VOICE- CCAPPDEV'
 DEFAULT_COMPANY = 'CONNEX TELECOMMUNICATIONS INC.'
-
-DEFAULT_TYPES = [
-    {'key': '1.ADMINISTRATION', 'label': 'Administration',   'q360id': '3750', 'project': 'ADMINISTRATION - 74692449'},
-    {'key': '2.PTO',            'label': 'Personal Time-Off','q360id': '3750', 'project': 'PERSONAL TIME-OFF - 74692979'},
-    {'key': '3.SICK',           'label': 'Sick (PTO)',       'q360id': '3750', 'project': 'PERSONAL TIME-OFF - 74692979'},
-    {'key': '3.VACATION',       'label': 'Vacation (PTO)',   'q360id': '3750', 'project': 'VACATION - 74691924'},
-    {'key': '4.STAT HOLIDAY',   'label': 'Statutory Holiday','q360id': '3750', 'project': 'STATUTORY HOLIDAY - 74693494'},
-    {'key': '5.TRAINING',       'label': 'Training',         'q360id': '3750', 'project': 'TRAINING - 74694519'},
-    {'key': '6.ON-CALL',        'label': 'On-Call (PTO)',    'q360id': '3750', 'project': 'ON-CALL - 74694024'},
-]
-
-def _dt_field(key):
-    """Form field name for a default type key."""
-    return 'dt_' + key.replace('.', '_').replace(' ', '_').replace('-', '_')
 
 
 def _svc():
@@ -205,10 +190,8 @@ def _fill_missing_weeks(task_rows):
     return new_rows
 
 
-def _parse_excel(file, default_q360ids=None):
+def _parse_excel(file):
     """Parse uploaded Excel file. Returns list of user dicts, each with task rows."""
-    if default_q360ids is None:
-        default_q360ids = {}
     filename = file.filename.lower()
     if filename.endswith('.xlsb'):
         df = pd.read_excel(file, engine='pyxlsb', sheet_name=0)
@@ -252,19 +235,6 @@ def _parse_excel(file, default_q360ids=None):
         project  = _clean(row.get('Project', ''))
         comment  = _clean(row.get('Comment', ''))
 
-        # Apply default-type Q360 ID + project name if configured (case-insensitive customer match)
-        default_applied = False
-        if not has_q360:
-            cust_up = customer.upper()
-            for dt_key, dt_info in default_q360ids.items():
-                if dt_key.upper() == cust_up:
-                    q360id_str = dt_info['q360id'] if isinstance(dt_info, dict) else dt_info
-                    if q360id_str:
-                        has_q360 = True
-                        default_applied = True
-                        if isinstance(dt_info, dict) and dt_info.get('project'):
-                            project = dt_info['project']
-                        break
 
         # Build per-day data (all days, 0 if no hours)
         days = {}
@@ -295,7 +265,7 @@ def _parse_excel(file, default_q360ids=None):
             'project': project,
             'q360id': q360id_str,
             'needs_attention': not has_q360,
-            'suggested': default_applied,   # default-type auto-fill
+            'suggested': False,
             'category': DEFAULT_CATEGORY if has_q360 else '',
             'company': DEFAULT_COMPANY,
             'comment': comment,
@@ -329,44 +299,10 @@ def _parse_excel(file, default_q360ids=None):
             for u in seen_users]
 
 
-def _load_config():
-    """Return DEFAULT_TYPES merged with any saved DB overrides."""
-    db = get_db()
-    rows = {r['key']: r for r in db.execute('SELECT key, project, q360id FROM bulk_config').fetchall()}
-    result = []
-    for dt in DEFAULT_TYPES:
-        saved = rows.get(dt['key'])
-        result.append({
-            'key':     dt['key'],
-            'label':   dt['label'],
-            'project': saved['project'] if saved else dt['project'],
-            'q360id':  saved['q360id']  if saved else dt['q360id'],
-        })
-    return result
-
-
 @bp.route('/')
 @login_required
 def index():
-    return render_template('bulk/index.html', default_types=_load_config())
-
-
-@bp.route('/save-config', methods=['POST'])
-@login_required
-def save_config():
-    db = get_db()
-    for dt in DEFAULT_TYPES:
-        proj_field = 'dtp_' + dt['key'].replace('.', '_').replace(' ', '_').replace('-', '_')
-        q360_field = _dt_field(dt['key'])
-        project = request.form.get(proj_field, '').strip()
-        q360id  = request.form.get(q360_field, '').strip()
-        db.execute(
-            'INSERT INTO bulk_config (key, project, q360id) VALUES (?, ?, ?)'
-            ' ON CONFLICT(key) DO UPDATE SET project=excluded.project, q360id=excluded.q360id',
-            (dt['key'], project, q360id)
-        )
-    db.commit()
-    return '<span class="text-success small">Config saved.</span>'
+    return render_template('bulk/index.html')
 
 
 @bp.route('/parse', methods=['POST'])
@@ -375,16 +311,8 @@ def parse():
     file = request.files.get('file')
     if not file:
         return '<div class="alert alert-danger">Please provide a file.</div>'
-    # Collect default-type Q360 IDs + project names from form
-    default_q360ids = {}
-    for dt in DEFAULT_TYPES:
-        q360_val = request.form.get(_dt_field(dt['key']), '').strip()
-        proj_field = 'dtp_' + dt['key'].replace('.', '_').replace(' ', '_').replace('-', '_')
-        proj_val = request.form.get(proj_field, dt['project']).strip()
-        if q360_val:
-            default_q360ids[dt['key']] = {'q360id': q360_val, 'project': proj_val}
     try:
-        grouped = _parse_excel(file, default_q360ids)
+        grouped = _parse_excel(file)
     except Exception as e:
         return f'<div class="alert alert-danger">Failed to parse file: {e}</div>'
     # Determine which day columns have any data
@@ -409,8 +337,7 @@ def parse():
     return render_template('bulk/_table.html', grouped=grouped, categories=CATEGORIES,
                            default_category=DEFAULT_CATEGORY, active_days=active_days,
                            user_projects=user_projects,
-                           all_weeks=all_weeks,
-                           default_types=_load_config())
+                           all_weeks=all_weeks)
 
 
 @bp.route('/review', methods=['POST'])

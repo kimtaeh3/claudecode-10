@@ -16,50 +16,6 @@
         <input type="file" name="file" class="form-control" accept=".xlsx,.xlsb" required>
       </div>
 
-      <div class="mb-3">
-        <a class="fw-semibold text-decoration-none text-dark d-flex align-items-center gap-1"
-           data-bs-toggle="collapse" href="#default-types-body" role="button"
-           style="cursor:pointer;width:fit-content">
-          <span id="config-chevron">▶</span> Default Type Q360 IDs
-          <span class="text-muted small ms-1">(click to expand)</span>
-        </a>
-        <div id="default-types-body" class="collapse mt-2">
-          <div class="form-text mb-2">These Q360 IDs are applied automatically to rows matching each type. Edit the value to override.</div>
-          <table class="table table-sm table-bordered mb-2">
-            <thead class="table-light">
-              <tr>
-                <th>Customer</th>
-                <th>Project Name</th>
-                <th style="width:120px">Q360 ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for dt in default_types %}
-              {% set field = 'dt_' ~ dt.key | replace('.','_') | replace(' ','_') | replace('-','_') %}
-              {% set proj_field = 'dtp_' ~ dt.key | replace('.','_') | replace(' ','_') | replace('-','_') %}
-              <tr>
-                <td class="text-nowrap"><code>{{ dt.key }}</code> <span class="text-muted small">— {{ dt.label }}</span></td>
-                <td>
-                  <input type="text" name="{{ proj_field }}" class="form-control form-control-sm"
-                         value="{{ dt.project }}">
-                </td>
-                <td>
-                  <input type="text" name="{{ field }}" class="form-control form-control-sm dt-q360"
-                         value="{{ dt.q360id }}" pattern="\d*" inputmode="numeric">
-                  <div class="invalid-feedback" style="font-size:.75rem">Numbers only</div>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-          <button type="button" class="btn btn-outline-secondary btn-sm"
-                  hx-post="{{ url_for('bulk.save_config') }}"
-                  hx-include="closest form"
-                  hx-target="#save-config-msg"
-                  hx-swap="innerHTML">Save Config</button>
-          <span id="save-config-msg" class="ms-2"></span>
-        </div>
-      </div>
 
       <div class="d-flex align-items-center gap-3">
         <button type="submit" class="btn btn-primary">Parse File</button>
@@ -71,19 +27,4 @@
 
 <div id="bulk-table" class="mt-4"></div>
 
-<script>
-document.querySelectorAll('.dt-q360').forEach(inp => {
-  inp.addEventListener('input', function() {
-    const valid = /^\d*$/.test(this.value);
-    this.classList.toggle('is-invalid', !valid);
-    this.classList.toggle('is-valid', valid && this.value.length > 0);
-  });
-});
-const configBody = document.getElementById('default-types-body');
-const chevron = document.getElementById('config-chevron');
-if (configBody) {
-  configBody.addEventListener('show.bs.collapse',  () => { chevron.textContent = '▼'; });
-  configBody.addEventListener('hide.bs.collapse',  () => { chevron.textContent = '▶'; });
-}
-</script>
 {% endblock %}
