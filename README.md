@@ -1,57 +1,56 @@
 Q360 Automation Tool
 
-Checks employee hours for the week and sends an email reminder if the total weekly hours is below 40.
-UI to send time bill hours more efficiently.
+Web app for automating Q360 hour submission. Supports single and bulk Excel uploads for multiple employees.
+
+### Features
+
+- **Submit Hours** — submit hours for any user with a Confirm → Submit two-step flow
+- **Bulk Upload** — parse `.xlsx`/`.xlsb` Excel files, review entries per employee/week, and submit in bulk
+  - Auto-derives username from Employee name when Username column is missing
+  - Skips days where existing + new hours would exceed 8h; allows submission when total ≤ 8h
+  - Filter entries by type (guessed, needs attention, missing week, < 40h)
+- **Hours View** — view logged hours by user or team across a date range
+- **Forecast** — weekly hours forecast view
 
 ### Setup
 
-1) Create a python virtual environment:  <br>
-https://docs.python.org/3/library/venv.html  <br>
-https://www.infoworld.com/article/3239675/virtualenv-and-venv-python-virtual-environments-explained.html#:~:text=To%20use%20the%20virtual%20environment,just%20run%20python%20myscript.py%20.
+#### Local Development
 
+1. Create a Python virtual environment and activate it:
+   ```
+   python -m venv venv
+   source venv/bin/activate   # Windows: venv\Scripts\activate
+   ```
 
-2) Install the following dependencies for Python:
+2. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-  i) Activate virtualenv ($source path_to_virtualenv/bin/activate)
+3. Initialize the database:
+   ```
+   flask --app run:app init-db
+   ```
 
-  ii) Go to your project root directory
+4. Run the app:
+   ```
+   flask --app run:app run
+   ```
 
-  iii) Get all the packages along with dependencies in requirements.txt
-    ```
-    pip freeze > requirements.txt
-    ```
-    
-  iv) Install packages from requirements.txt
-    ```
-    pip install -r requirements.txt
-    ```
+#### Docker / Production
 
-3) Create a .env file and paste the following code. Add credential values:
+The app is containerized and deployed via Docker Compose. On startup, `entrypoint.sh` automatically runs `init-db` before launching gunicorn.
+
 ```
-# Q360 Email Credentials:
-EMAIL_ADDRESS=
-EMAIL_PASSWORD=
+docker compose up -d
 ```
 
-4) Database:
-Current ERD can be found here https://app.diagrams.net/#G1XN5SVNzZdP35kGBxnwomYq1HRa9vrTD8
-In the root folder run the re-schema and re-seed files:
-    ```
-    python dbtestschema.py
-    ```
-    ```
-    python dbtestseed.py
-    ```
-  This will create the SQLite3 database file - q360test_db.db
+The container image is built and pushed to GitHub Container Registry (ghcr.io) via GitHub Actions on every push to `main`.
 
-5) Visual Browser for Database:
-Please download DB Browser for SQLite
-```
-https://sqlitebrowser.org/dl/
-```
-In the DB Browser:
-File -> Open Database -> Select the q360test_db.db file
-Browse Data tab allows for viewing the tables and Execute SQL allows for queries against the DB
+### Environment
 
-6) Branching Strategies:
-Commit to Feature Branch > Merge to Dev Brench > Merge to QA Branch > Merge to Main Branch
+No `.env` file is required for basic operation. The app authenticates against the Q360 API using credentials entered at login.
+
+### Database
+
+SQLite database stored at `/app/data/q360.db` (Docker volume) or `./data/q360.db` locally. Schema is in `app/schema.sql` and initialized automatically on startup.

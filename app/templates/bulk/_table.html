@@ -379,6 +379,13 @@ function toggleTypeFilter(type) {
     if (_activeTypeFilters.has(type)) _activeTypeFilters.delete(type);
     else _activeTypeFilters.add(type);
   }
+  // When showing all entries, uncheck commit-all and skip-all
+  if (_activeTypeFilters.size === 0) {
+    const commitAll = document.getElementById('global-commit-cb');
+    const skipAll   = document.getElementById('global-skip-cb');
+    if (commitAll) commitAll.checked = false;
+    if (skipAll)   skipAll.checked   = false;
+  }
   _applyBadgeStyles();
   filterByWeek();
 }
