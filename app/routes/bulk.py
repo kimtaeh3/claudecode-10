@@ -320,11 +320,11 @@ def parse():
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
     )]
 
-    # Fetch live Q360 projects for each user to guess resq_zoom_key (task number)
+    # Fetch live Q360 projects per user and guess resq_zoom_key from Excel Project column.
+    # Wrapped in try/except so any API or matching failure falls back gracefully.
     import re as _re
 
     def _match_score(excel_customer, excel_project, q360_desc):
-        """Score how well excel customer+project text matches a Q360 description (0–1)."""
         search = ' '.join(filter(None, [excel_customer, excel_project])).lower()
         desc = q360_desc.lower()
         search = _re.sub(r'[^\w\s]', ' ', search)
@@ -334,65 +334,73 @@ def parse():
             return 0.0
         return sum(1 for w in words if w in desc) / len(words)
 
-    svc = _svc()
-    live_by_user = {}
-    for u in grouped:
-        try:
-            live_by_user[u['username']] = svc.get_projects(u['username'])
-        except Exception:
-            live_by_user[u['username']] = {}
+    try:
+        svc = _svc()
+        live_by_user = {}
+        for u in grouped:
+            try:
+                live_by_user[u['username']] = svc.get_projects(u['username'])
+            except Exception:
+                live_by_user[u['username']] = {}
 
-    # For each row, guess the resq_zoom_key (task number) from live Q360 projects
-    # using the Excel Project column to text-match against Q360 descriptions.
-    for u in grouped:
-        live = live_by_user.get(u['username'], {})
-        if not live:
-            continue
-
-        for r in u['rows']:
-            qid = r.get('q360id', '')
-
-            # If already a valid resq_zoom_key, just update the display label
-            if qid and qid in live:
-                desc = live[qid].get('description', '').strip()
-                if desc:
-                    r['customer'] = desc
+        # Guess resq_zoom_key for each row by text-matching Excel Project → Q360 description
+        for u in grouped:
+            live = live_by_user.get(u['username'], {})
+            if not live:
                 continue
+            for r in u['rows']:
+                qid = r.get('q360id', '')
+                if qid and qid in live:
+                    desc = live[qid].get('description', '').strip()
+                    if desc:
+                        r['customer'] = desc
+                    continue
+                best_rzk, best_score = None, 0.0
+                for rzk, item in live.items():
+                    if Q360Service._is_admin_project(item.get('title', '')):
+                        continue
+                    score = _match_score(r.get('customer', ''), r.get('project', ''),
+                                         item.get('description', ''))
+                    if score > best_score:
+                        best_score, best_rzk = score, rzk
+                if best_rzk and best_score >= 0.4:
+                    item = live[best_rzk]
+                    r['q360id']          = best_rzk
+                    r['customer']        = item.get('description', '').strip()
+                    r['category']        = item.get('category', '') or DEFAULT_CATEGORY
+                    r['needs_attention'] = False
+                    r['project_guessed'] = True
+                    r['suggested']       = True
 
-            # Use Excel customer+project text to find best matching live project
-            best_rzk, best_score = None, 0.0
+        # Build dropdown options from live Q360 data (resq_zoom_key as q360id)
+        user_projects = {}
+        for u in grouped:
+            live = live_by_user.get(u['username'], {})
+            combos = []
             for rzk, item in live.items():
                 if Q360Service._is_admin_project(item.get('title', '')):
                     continue
-                desc = item.get('description', '')
-                score = _match_score(r.get('customer', ''), r.get('project', ''), desc)
-                if score > best_score:
-                    best_score, best_rzk = score, rzk
-
-            if best_rzk and best_score >= 0.4:
-                item = live[best_rzk]
                 desc = item.get('description', '').strip()
-                r['q360id'] = best_rzk
-                r['customer'] = desc
-                r['category'] = item.get('category', '') or DEFAULT_CATEGORY
-                r['needs_attention'] = False
-                r['project_guessed'] = True
-                r['suggested'] = True
+                if not desc:
+                    continue
+                cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
+                combos.append({'customer': desc, 'project': '', 'q360id': rzk, 'category': cat})
+            user_projects[u['username']] = combos
 
-    # Build user_projects from live Q360 data (keyed by resq_zoom_key) for dropdowns
-    user_projects = {}
-    for u in grouped:
-        live = live_by_user.get(u['username'], {})
-        combos = []
-        for rzk, item in live.items():
-            if Q360Service._is_admin_project(item.get('title', '')):
-                continue
-            desc = item.get('description', '').strip()
-            if not desc:
-                continue
-            cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
-            combos.append({'customer': desc, 'project': '', 'q360id': rzk, 'category': cat})
-        user_projects[u['username']] = combos
+    except Exception:
+        # Fall back: build user_projects from Excel data so the table still renders
+        user_projects = {}
+        for u in grouped:
+            combos = []
+            seen_keys = set()
+            for r in u['rows']:
+                if not r['needs_attention'] and r['customer']:
+                    key = (r['customer'], r['project'], r['q360id'])
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        combos.append({'customer': r['customer'], 'project': r['project'],
+                                       'q360id': r['q360id'], 'category': r['category']})
+            user_projects[u['username']] = combos
 
     all_weeks = sorted(set(r['week_num'] for u in grouped for r in u['rows']))
     return render_template('bulk/_table.html', grouped=grouped, categories=CATEGORIES,
