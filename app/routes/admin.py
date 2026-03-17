@@ -22,12 +22,18 @@ def add_user():
     team = request.form['team'].strip()
     email = request.form.get('email', '').strip()
     db = get_db()
+    if not username or not team:
+        if request.headers.get('HX-Request'):
+            members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
+            return render_template('admin/_members_table.html', members=members,
+                                   error='Username and team are required.')
+        return redirect(url_for('admin.users'))
     try:
         db.execute('INSERT INTO team_member (username, team, email) VALUES (?, ?, ?)',
                    (username, team, email or None))
         db.commit()
     except Exception:
-        pass
+        pass  # duplicate username — silently ignore
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
         return render_template('admin/_members_table.html', members=members)

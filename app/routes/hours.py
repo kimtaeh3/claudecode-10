@@ -7,9 +7,15 @@ from app.db import get_db
 
 bp = Blueprint('hours', __name__, url_prefix='/hours')
 
+ADMIN_USERS = {'demoq360billing'}
+
 
 def _svc():
     return Q360Service(session['user_id'], session['password'])
+
+
+def _is_admin():
+    return session.get('user_id') in ADMIN_USERS
 
 
 @bp.route('/')
@@ -78,7 +84,7 @@ def projects():
 @bp.route('/submit', methods=['GET'])
 @login_required
 def submit():
-    is_admin = session['user_id'] == 'demoq360billing'
+    is_admin = _is_admin()
     return render_template('hours/submit.html',
                            categories=CATEGORIES,
                            companies=COMPANIES,
@@ -95,7 +101,7 @@ def submit_action():
     note = f.get('note', 'POWERED BY Q360 AUTO APP')
     company = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
     include_weekends = f.get('weekends') == 'on'
-    is_admin = session['user_id'] == 'demoq360billing'
+    is_admin = _is_admin()
     target_user = f.get('target_user') if is_admin else None
     category = f.get('category') or None
 

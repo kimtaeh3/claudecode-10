@@ -2,9 +2,8 @@
 {% set skipped     = entries | rejectattr('q360id') | list %}
 
 <div class="card border-primary mt-3">
-  <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
+  <div class="card-header bg-primary text-white">
     <h6 class="mb-0">Review Entries</h6>
-    <span class="badge bg-warning text-dark">🔒 Submission locked — testing mode</span>
   </div>
 
   <div class="table-responsive" style="max-height:50vh;overflow-y:auto">
@@ -71,10 +70,18 @@
   {% endif %}
 
   <div class="card-footer d-flex align-items-center gap-3">
-    <button type="button" class="btn btn-success" disabled
-            title="Submission disabled — testing mode">
-      Submit to Q360
-    </button>
-    <span class="text-muted small">🔒 Submit is locked during testing</span>
+    <form hx-post="{{ url_for('bulk.submit') }}"
+          hx-target="#bulk-submit-result"
+          hx-indicator="#submit-to-q360-spinner">
+      <input type="hidden" name="entries" value="{{ entries_json | e }}">
+      <button type="submit" class="btn btn-success"
+              {% if not submittable %}disabled{% endif %}>
+        Submit to Q360
+      </button>
+    </form>
+    <span id="submit-to-q360-spinner" class="htmx-indicator spinner-border spinner-border-sm text-success"></span>
+    <span class="text-muted small">{{ submittable | length }} entr{{ 'y' if submittable | length == 1 else 'ies' }} will be submitted</span>
   </div>
 </div>
+
+<div id="bulk-submit-result" class="mt-2"></div>

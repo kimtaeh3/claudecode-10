@@ -4,7 +4,6 @@ Credentials are passed explicitly; no Flask session dependency.
 """
 
 import json
-import smtplib
 from datetime import datetime, timedelta
 from itertools import groupby
 from urllib.parse import urlencode, quote_plus, unquote
@@ -125,42 +124,6 @@ class Q360Service:
             'weeklyTotalReport': self._parse_weekly_total(raw),
             'projectTotalReport': self._parse_project_total(raw),
         }
-
-    def get_timebills_rest(self, min_date: str, max_date: str) -> list:
-        """
-        Use the Q360 REST API to list all timebills in a date range.
-        Returns the raw list of timebill dicts from the API.
-        """
-        import base64
-        credentials = base64.b64encode(
-            f"{self.user_id}:{self.password}".encode()
-        ).decode()
-        headers = {
-            'Authorization': f'Basic {credentials}',
-            'Content-Type': 'application/json',
-            'X-HTTP-Method-Override': 'List',
-        }
-        url = f"{BASE_URL}/director.php/Q360API/q360data/V1/TimeBills"
-        r = requests.post(
-            url,
-            headers=headers,
-            params={
-                'responsetype': 'JSON',
-                'dataonly': '',
-                'MinDate': min_date,
-                'MaxDate': max_date,
-            },
-            verify=False,
-        )
-        data = r.json()
-        # REST API wraps results; handle both list and dict responses
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            for key in ('Data', 'data', 'TimeBills', 'timebills', 'results'):
-                if key in data:
-                    return data[key]
-        return data
 
     # ------------------------------------------------------------------ #
     # Projects
@@ -310,23 +273,6 @@ class Q360Service:
                           data=urlencode(save_data, quote_via=quote_plus),
                           cookies=cookies, verify=False)
         return {'status': 'ok', 'timebillno': timebill_no}
-
-    # ------------------------------------------------------------------ #
-    # Email
-    # ------------------------------------------------------------------ #
-
-    def send_reminder(self, target_user_id: str, total_hours: float,
-                      start_date: str, end_date: str,
-                      email_address: str, email_password: str) -> None:
-        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        server.login(email_address, email_password)
-        subject = f'Subject: Weekly Timesheet Reminder: {start_date} - {end_date}\n\n'
-        body = (
-            f'You have completed {total_hours} hours this week. '
-            'Please update your hours on Q360.'
-        )
-        server.sendmail(email_address, f'{target_user_id}@connexservice.ca', subject + body)
-        server.quit()
 
     # ------------------------------------------------------------------ #
     # Date helpers
