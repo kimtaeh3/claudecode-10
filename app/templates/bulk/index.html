@@ -8,7 +8,8 @@
     <form hx-post="{{ url_for('bulk.parse') }}"
           hx-target="#bulk-table"
           hx-indicator="#parse-spinner"
-          hx-encoding="multipart/form-data">
+          hx-encoding="multipart/form-data"
+          hx-on::before-request="document.getElementById('bulk-table').innerHTML = ''">
 
       <div class="mb-3">
         <label class="form-label">Excel File (.xlsx or .xlsb)</label>
