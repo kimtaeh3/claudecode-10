@@ -490,9 +490,19 @@ def submit():
     except Exception:
         return '<div class="alert alert-danger">Invalid submission data.</div>'
 
+    import traceback as _tb
+    try:
+        return _do_submit(entries)
+    except Exception:
+        return (f'<div class="alert alert-danger"><strong>Unexpected error — please report:'
+                f'</strong><pre style="font-size:.75rem;white-space:pre-wrap">'
+                f'{_tb.format_exc()}</pre></div>')
+
+
+def _do_submit(entries):
+    from collections import defaultdict
     svc = _svc()
     results = []
-    from collections import defaultdict
 
     # Fetch existing hours for all users/dates
     user_dates = defaultdict(set)
