@@ -479,7 +479,7 @@ def submit():
         if e.get('needs_attention') or not e.get('q360id'):
             continue
         for d in e.get('days', []):
-            if float(d.get('hours', 0)) > 0:
+            if float(d.get('hours', 0)) > 0 and d.get('date'):
                 user_dates[e['username']].add(d['date'])
 
     existing = {}
@@ -500,6 +500,8 @@ def submit():
         if e.get('needs_attention') or not e.get('q360id'):
             continue
         for d in e.get('days', []):
+            if not d.get('date'):
+                continue
             hours = float(d.get('hours', 0))
             key = f"{e['username']}|{d['date']}"
             existing_h = existing.get(key, 0.0)
@@ -519,6 +521,8 @@ def submit():
         if e.get('needs_attention') or not e.get('q360id'):
             continue
         for d in e.get('days', []):
+            if not d.get('date'):
+                continue
             hours = float(d.get('hours', 0))
             if hours <= 0:
                 continue
