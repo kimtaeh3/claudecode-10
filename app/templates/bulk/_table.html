@@ -47,7 +47,7 @@
         <th style="width:90px">Week</th>
         <th>Employee</th>
         <th>Project</th>
-        <th style="width:100px">Q360 ID</th>
+        <th style="width:110px">Task #</th>
         <th style="width:160px">Category</th>
         {% for day in active_days %}
         <th class="text-center" style="width:65px">{{ day }}</th>
@@ -149,7 +149,7 @@
             <option value="">— select —</option>
             {% for proj in user_projs %}
               {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') %}
-              {% set sel = (proj.customer == row.customer and proj.project == row.project) %}
+              {% set sel = (proj.q360id == row.q360id) %}
               {% if sel %}{% set ns2.matched = true %}{% endif %}
               <option value="{{ loop.index0 }}"
                       data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
@@ -730,11 +730,14 @@ function applyProjectChoice(sel) {
         }
       });
       if (days.length === 0) return;
+      const projSel = tr.querySelector('.project-field');
+      const projLabel = projSel ? (projSel.options[projSel.selectedIndex]?.text || '').trim() : '';
       rows.push({
         row_num: tr.dataset.rownum,
         username: tr.dataset.username,
         employee: tr.closest('tbody').querySelector('td:nth-child(2)')?.textContent?.trim() || '',
         q360id, category,
+        project: projLabel,
         needs_attention: !q360id,
         company: 'CONNEX TELECOMMUNICATIONS INC.',
         comment: '',

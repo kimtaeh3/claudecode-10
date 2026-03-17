@@ -319,20 +319,64 @@ def parse():
     active_days = [d for d in DAY_COLS if any(
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
     )]
-    # Build per-user known project list for add-row dropdown
-    user_projects = {}
-    seen = {}
+
+    # Fetch live Q360 projects for each user to map Excel projectno → resq_zoom_key (task number)
+    svc = _svc()
+    live_by_user = {}
     for u in grouped:
-        combos = []
-        seen_keys = set()
+        try:
+            live_by_user[u['username']] = svc.get_projects(u['username'])
+        except Exception:
+            live_by_user[u['username']] = {}
+
+    # Remap each row's q360id (Excel short projectno) to resq_zoom_key (actual task number)
+    for u in grouped:
+        live = live_by_user.get(u['username'], {})
+        projectno_map = {}  # Excel short ID → resq_zoom_key
+        for rzk, item in live.items():
+            pno = str(item.get('projectno', '')).strip()
+            if pno:
+                projectno_map[pno] = rzk
+
         for r in u['rows']:
-            if not r['needs_attention'] and r['customer']:
-                key = (r['customer'], r['project'], r['q360id'])
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    combos.append({'customer': r['customer'], 'project': r['project'],
-                                   'q360id': r['q360id'], 'category': r['category']})
+            qid = r.get('q360id', '')
+            if not qid:
+                continue
+            if qid in live:
+                # Already a valid resq_zoom_key — update description
+                desc = live[qid].get('description', '').strip()
+                if desc:
+                    r['customer'] = desc
+            elif qid in projectno_map:
+                rzk = projectno_map[qid]
+                r['q360id'] = rzk
+                item = live[rzk]
+                desc = item.get('description', '').strip()
+                if desc:
+                    r['customer'] = desc
+                r['category'] = item.get('category', '') or DEFAULT_CATEGORY
+                r['needs_attention'] = False
+            # Remap any recommended_q360ids too
+            if r.get('recommended_q360ids'):
+                r['recommended_q360ids'] = [
+                    projectno_map.get(rid, rid) for rid in r['recommended_q360ids']
+                ]
+
+    # Build user_projects from live Q360 data (keyed by resq_zoom_key) for dropdowns
+    user_projects = {}
+    for u in grouped:
+        live = live_by_user.get(u['username'], {})
+        combos = []
+        for rzk, item in live.items():
+            if Q360Service._is_admin_project(item.get('title', '')):
+                continue
+            desc = item.get('description', '').strip()
+            if not desc:
+                continue
+            cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
+            combos.append({'customer': desc, 'project': '', 'q360id': rzk, 'category': cat})
         user_projects[u['username']] = combos
+
     all_weeks = sorted(set(r['week_num'] for u in grouped for r in u['rows']))
     return render_template('bulk/_table.html', grouped=grouped, categories=CATEGORIES,
                            default_category=DEFAULT_CATEGORY, active_days=active_days,

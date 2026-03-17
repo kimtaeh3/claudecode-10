@@ -13,7 +13,7 @@
       <thead class="table-dark" style="position:sticky;top:0">
         <tr>
           <th>Employee</th>
-          <th>Q360 ID</th>
+          <th>Task #</th>
           <th>Project</th>
           <th>Category</th>
           <th>Company</th>
@@ -33,7 +33,7 @@
             <tr>
               <td class="small text-nowrap">{{ e.username }}</td>
               <td class="small">{{ e.q360id }}</td>
-              <td class="small">{{ e.project or e.customer or '—' }}</td>
+              <td class="small">{{ e.project or '—' }}</td>
               <td class="small">{{ e.category }}</td>
               <td class="small text-nowrap">{{ e.company }}</td>
               <td class="small">{{ d.day }}</td>
