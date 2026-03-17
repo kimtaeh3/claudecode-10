@@ -279,7 +279,7 @@
 <div id="bulk-result" class="mt-3"></div>
 
 <script>
-const USER_PROJECTS = {{ user_projects | tojson }};
+window.USER_PROJECTS = {{ user_projects | tojson }};
 
 function getProjectRows() {
   return Array.from(document.querySelectorAll('tr[data-rownum]'));
@@ -367,8 +367,8 @@ function toggleCommitAll(checked) {
   });
 }
 
-const _activeTypeFilters = new Set();
-const TYPE_BADGE_MAP = { suggested: 'legend-guessed', attention: 'legend-attention', missing: 'legend-missing', incomplete: 'legend-incomplete' };
+window._activeTypeFilters = new Set();
+window.TYPE_BADGE_MAP = { suggested: 'legend-guessed', attention: 'legend-attention', missing: 'legend-missing', incomplete: 'legend-incomplete' };
 
 function _applyBadgeStyles() {
   const allEl = document.getElementById('legend-all');
@@ -494,7 +494,7 @@ function deleteRow(btn) {
   validate();
 }
 
-let _newRowCounter = 10000;
+window._newRowCounter = 10000;
 
 function addRowToWeek(username, employee, weekNum, btn) {
   // Find the first data row for this user+week and insert before it
