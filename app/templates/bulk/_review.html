@@ -1,7 +1,7 @@
 {% set submittable = entries | selectattr('q360id') | list %}
 {% set skipped     = entries | rejectattr('q360id') | list %}
 {% set ns = namespace(day_count=0) %}
-{% for e in submittable %}{% for d in e.days %}{% if d.hours > 0 %}{% set ns.day_count = ns.day_count + 1 %}{% endif %}{% endfor %}{% endfor %}
+{% for e in submittable %}{% for d in e.days %}{% if d.hours > 0 %}{% set key = e.username ~ '|' ~ d.date %}{% set existing_h = existing.get(key) %}{% if existing_h is none or existing_h + d.hours <= 8.0 %}{% set ns.day_count = ns.day_count + 1 %}{% endif %}{% endif %}{% endfor %}{% endfor %}
 
 <div class="card border-primary mt-3">
   <div class="card-header bg-primary text-white">
@@ -37,7 +37,11 @@
                 {% if existing_h is none %}
                   <span class="badge bg-secondary" title="Could not check">? unknown</span>
                 {% elif existing_h > 0 %}
-                  <span class="badge bg-warning text-dark" title="{{ existing_h }}h already logged this day">⚠ {{ existing_h }}h exists</span>
+                  {% if existing_h + d.hours <= 8.0 %}
+                    <span class="badge bg-info text-dark" title="{{ existing_h }}h exists, adding {{ d.hours }}h = {{ existing_h + d.hours }}h">{{ existing_h }}h + {{ d.hours }}h = {{ existing_h + d.hours }}h ✓</span>
+                  {% else %}
+                    <span class="badge bg-danger" title="{{ existing_h }}h exists, adding {{ d.hours }}h would exceed 8h">✗ {{ existing_h }}h exists — skip</span>
+                  {% endif %}
                 {% else %}
                   <span class="badge bg-success">✓ clear</span>
                 {% endif %}

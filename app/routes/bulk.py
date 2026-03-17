@@ -463,14 +463,41 @@ def submit():
 
     svc = _svc()
     results = []
-    # Recalculate time slots server-side based on row_num ordering
     from collections import defaultdict
+
+    # Fetch existing hours for all users/dates
+    user_dates = defaultdict(set)
+    for e in entries:
+        if e.get('needs_attention') or not e.get('q360id'):
+            continue
+        for d in e.get('days', []):
+            if float(d.get('hours', 0)) > 0:
+                user_dates[e['username']].add(d['date'])
+
+    existing = {}
+    for username, dates in user_dates.items():
+        if not dates:
+            continue
+        try:
+            result = svc.get_hours(username, min(dates), max(dates))
+            for tb in result.get('userReport', []):
+                key = f"{username}|{tb['startDate'][:10]}"
+                existing[key] = existing.get(key, 0.0) + float(tb.get('hours', 0))
+        except Exception:
+            pass
+
+    # Recalculate time slots server-side based on row_num ordering
     day_stacks = defaultdict(list)  # (username, date) -> [(row_num, entry, day_dict)]
     for e in entries:
         if e.get('needs_attention') or not e.get('q360id'):
             continue
         for d in e.get('days', []):
-            day_stacks[(e['username'], d['date'])].append((int(e['row_num']), e, d))
+            hours = float(d.get('hours', 0))
+            key = f"{e['username']}|{d['date']}"
+            existing_h = existing.get(key, 0.0)
+            if hours > 0 and existing_h + hours <= 8.0:
+                day_stacks[(e['username'], d['date'])].append((int(e['row_num']), e, d))
+
     for stack in day_stacks.values():
         stack.sort(key=lambda x: x[0])
         current = datetime.strptime(stack[0][2]['date'] + ' 08:00', '%Y-%m-%d %H:%M')
@@ -484,11 +511,20 @@ def submit():
         if e.get('needs_attention') or not e.get('q360id'):
             continue
         for d in e.get('days', []):
+            hours = float(d.get('hours', 0))
+            if hours <= 0:
+                continue
+            key = f"{e['username']}|{d['date']}"
+            existing_h = existing.get(key, 0.0)
+            if existing_h + hours > 8.0:
+                results.append({'employee': e.get('username', ''), 'day': d.get('day', ''),
+                                'hours': hours, 'success': None,
+                                'error': f'Skipped — {existing_h}h already logged, adding {hours}h would exceed 8h'})
+                continue
             try:
                 date = d['date']
                 start_time = d.get('start_time', '08:00')
                 end_time = d.get('end_time', '16:00')
-                hours = float(d['hours'])
                 sd = datetime.strptime(f"{date} {start_time}", '%Y-%m-%d %H:%M')
                 ed = datetime.strptime(f"{date} {end_time}", '%Y-%m-%d %H:%M')
                 if ed <= sd:
@@ -507,6 +543,6 @@ def submit():
                                 'hours': hours, 'success': True, 'error': None})
             except Exception as ex:
                 results.append({'employee': e.get('username', ''), 'day': d.get('day', ''),
-                                'hours': float(d.get('hours', 0)), 'success': False, 'error': str(ex)})
+                                'hours': hours, 'success': False, 'error': str(ex)})
 
     return render_template('bulk/_result.html', results=results)

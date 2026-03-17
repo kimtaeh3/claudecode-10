@@ -1,13 +1,27 @@
-{% set ok = results | selectattr('success') | list %}
-{% set fail = results | rejectattr('success') | list %}
+{% set ok      = results | selectattr('success', 'equalto', true)  | list %}
+{% set skipped = results | selectattr('success', 'none')            | list %}
+{% set fail    = results | selectattr('success', 'equalto', false)  | list %}
 
-<div class="alert {% if fail %}alert-warning{% else %}alert-success{% endif %} mt-2">
+<div class="alert {% if fail %}alert-warning{% elif skipped %}alert-info{% else %}alert-success{% endif %} mt-2">
   <strong>Submitted {{ ok|length }} of {{ results|length }} entries.</strong>
+  {% if skipped %}
+  <div class="mt-2">
+    <strong>Skipped {{ skipped|length }} (would exceed 8h):</strong>
+    <ul class="mb-0 mt-1">
+      {% for r in skipped %}
+      <li>{{ r.employee }} — {{ r.day }} ({{ r.hours }}h): {{ r.error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
   {% if fail %}
-  <ul class="mb-0 mt-2">
-    {% for r in fail %}
-    <li>{{ r.employee }} — {{ r.day }} ({{ r.hours }}h): {{ r.error }}</li>
-    {% endfor %}
-  </ul>
+  <div class="mt-2">
+    <strong>Failed {{ fail|length }}:</strong>
+    <ul class="mb-0 mt-1">
+      {% for r in fail %}
+      <li>{{ r.employee }} — {{ r.day }} ({{ r.hours }}h): {{ r.error }}</li>
+      {% endfor %}
+    </ul>
+  </div>
   {% endif %}
 </div>
