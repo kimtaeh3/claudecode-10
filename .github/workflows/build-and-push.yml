@@ -41,26 +41,3 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_PATH }}:buildcache,mode=max
 
-      - name: Deploy to Portainer
-        run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
-            "${{ secrets.PORTAINER_URL }}/api/stacks/${{ secrets.PORTAINER_STACK_ID }}?endpointId=${{ secrets.PORTAINER_ENDPOINT_ID }}" \
-            -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"env\": [
-                {\"name\": \"IMAGE_TAG\", \"value\": \"${{ github.run_number }}\"},
-                {\"name\": \"SECRET_KEY\", \"value\": \"${{ secrets.SECRET_KEY }}\"},
-                {\"name\": \"HOST_PORT\", \"value\": \"8080\"}
-              ],
-              \"pullImage\": true,
-              \"prune\": false
-            }")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n-1)
-          echo "Response: $BODY"
-          echo "HTTP status: $HTTP_CODE"
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Portainer deploy failed with status $HTTP_CODE"
-            exit 1
-          fi
