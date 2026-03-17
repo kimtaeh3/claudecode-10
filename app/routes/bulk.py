@@ -453,6 +453,27 @@ def review():
                 existing.pop(f"{username}|{d}", None)
             api_errors[username] = str(e)
 
+    # Compute expected start/end times for display in the review table.
+    # Start each day at 08:00 + existing hours already logged, then stack entries.
+    review_stacks = defaultdict(list)
+    for e in entries:
+        if not e.get('q360id'):
+            continue
+        for d in e.get('days', []):
+            if d.get('date') and float(d.get('hours', 0)) > 0:
+                review_stacks[(e['username'], d['date'])].append(
+                    (int(e.get('row_num', 0)), d)
+                )
+    for (username, date), stack in review_stacks.items():
+        stack.sort(key=lambda x: x[0])
+        existing_h = existing.get(f"{username}|{date}", 0.0)
+        current = datetime.strptime(date + ' 08:00', '%Y-%m-%d %H:%M') + timedelta(hours=existing_h)
+        for _, d in stack:
+            d['start_time'] = current.strftime('%H:%M')
+            end_dt = current + timedelta(hours=float(d['hours']))
+            d['end_time'] = end_dt.strftime('%H:%M')
+            current = end_dt
+
     return render_template('bulk/_review.html',
                            entries=entries,
                            existing=existing,
@@ -508,9 +529,10 @@ def submit():
             if hours > 0 and existing_h + hours <= 8.0:
                 day_stacks[(e['username'], d['date'])].append((int(e['row_num']), e, d))
 
-    for stack in day_stacks.values():
+    for (username, date), stack in day_stacks.items():
         stack.sort(key=lambda x: x[0])
-        current = datetime.strptime(stack[0][2]['date'] + ' 08:00', '%Y-%m-%d %H:%M')
+        existing_h = existing.get(f"{username}|{date}", 0.0)
+        current = datetime.strptime(date + ' 08:00', '%Y-%m-%d %H:%M') + timedelta(hours=existing_h)
         for _, _, d in stack:
             d['start_time'] = current.strftime('%H:%M')
             end = current + timedelta(hours=float(d['hours']))
