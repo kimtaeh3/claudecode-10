@@ -320,7 +320,20 @@ def parse():
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
     )]
 
-    # Fetch live Q360 projects for each user to map Excel projectno → resq_zoom_key (task number)
+    # Fetch live Q360 projects for each user to guess resq_zoom_key (task number)
+    import re as _re
+
+    def _match_score(excel_customer, excel_project, q360_desc):
+        """Score how well excel customer+project text matches a Q360 description (0–1)."""
+        search = ' '.join(filter(None, [excel_customer, excel_project])).lower()
+        desc = q360_desc.lower()
+        search = _re.sub(r'[^\w\s]', ' ', search)
+        desc   = _re.sub(r'[^\w\s]', ' ', desc)
+        words = [w for w in search.split() if len(w) > 2]
+        if not words:
+            return 0.0
+        return sum(1 for w in words if w in desc) / len(words)
+
     svc = _svc()
     live_by_user = {}
     for u in grouped:
@@ -329,38 +342,42 @@ def parse():
         except Exception:
             live_by_user[u['username']] = {}
 
-    # Remap each row's q360id (Excel short projectno) to resq_zoom_key (actual task number)
+    # For each row, guess the resq_zoom_key (task number) from live Q360 projects
+    # using the Excel Project column to text-match against Q360 descriptions.
     for u in grouped:
         live = live_by_user.get(u['username'], {})
-        projectno_map = {}  # Excel short ID → resq_zoom_key
-        for rzk, item in live.items():
-            pno = str(item.get('projectno', '')).strip()
-            if pno:
-                projectno_map[pno] = rzk
+        if not live:
+            continue
 
         for r in u['rows']:
             qid = r.get('q360id', '')
-            if not qid:
-                continue
-            if qid in live:
-                # Already a valid resq_zoom_key — update description
+
+            # If already a valid resq_zoom_key, just update the display label
+            if qid and qid in live:
                 desc = live[qid].get('description', '').strip()
                 if desc:
                     r['customer'] = desc
-            elif qid in projectno_map:
-                rzk = projectno_map[qid]
-                r['q360id'] = rzk
-                item = live[rzk]
+                continue
+
+            # Use Excel customer+project text to find best matching live project
+            best_rzk, best_score = None, 0.0
+            for rzk, item in live.items():
+                if Q360Service._is_admin_project(item.get('title', '')):
+                    continue
+                desc = item.get('description', '')
+                score = _match_score(r.get('customer', ''), r.get('project', ''), desc)
+                if score > best_score:
+                    best_score, best_rzk = score, rzk
+
+            if best_rzk and best_score >= 0.4:
+                item = live[best_rzk]
                 desc = item.get('description', '').strip()
-                if desc:
-                    r['customer'] = desc
+                r['q360id'] = best_rzk
+                r['customer'] = desc
                 r['category'] = item.get('category', '') or DEFAULT_CATEGORY
                 r['needs_attention'] = False
-            # Remap any recommended_q360ids too
-            if r.get('recommended_q360ids'):
-                r['recommended_q360ids'] = [
-                    projectno_map.get(rid, rid) for rid in r['recommended_q360ids']
-                ]
+                r['project_guessed'] = True
+                r['suggested'] = True
 
     # Build user_projects from live Q360 data (keyed by resq_zoom_key) for dropdowns
     user_projects = {}
