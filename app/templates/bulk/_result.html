@@ -1,0 +1,13 @@
+{% set ok = results | selectattr('success') | list %}
+{% set fail = results | rejectattr('success') | list %}
+
+<div class="alert {% if fail %}alert-warning{% else %}alert-success{% endif %} mt-2">
+  <strong>Submitted {{ ok|length }} of {{ results|length }} entries.</strong>
+  {% if fail %}
+  <ul class="mb-0 mt-2">
+    {% for r in fail %}
+    <li>{{ r.employee }} — {{ r.day }} ({{ r.hours }}h): {{ r.error }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>

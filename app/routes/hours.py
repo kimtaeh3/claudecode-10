@@ -65,7 +65,11 @@ def projects():
     try:
         svc = _svc()
         projects = svc.get_projects(user_id)
-        items = [(v['description'], k) for k, v in projects.items()][1:]
+        items = [
+            (v['description'], k) for k, v in projects.items()
+            if not Q360Service._is_admin_project(v.get('title', ''))
+            and v.get('description', '').strip()
+        ]
     except Exception:
         items = []
     return render_template('hours/_projects.html', items=items)
@@ -93,7 +97,7 @@ def submit_action():
     include_weekends = f.get('weekends') == 'on'
     is_admin = session['user_id'] == 'demoq360billing'
     target_user = f.get('target_user') if is_admin else None
-    category = f.get('category') if is_admin else None
+    category = f.get('category') or None
 
     svc = _svc()
     submitted = 0

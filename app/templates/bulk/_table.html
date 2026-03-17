@@ -1,0 +1,805 @@
+{% if not grouped %}
+<div class="alert alert-warning">No entries found in the file.</div>
+{% else %}
+
+<hr>
+<div class="mb-2">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h5 class="mb-0">Review Entries
+      <span id="legend-all"       class="ms-2 badge bg-secondary"         style="font-size:.75rem;cursor:pointer" title="Show all" onclick="toggleTypeFilter(null)">All</span>
+      <span id="legend-guessed"   class="ms-1 badge bg-info text-dark"    style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('suggested')">⚡ guessed</span>
+      <span id="legend-attention" class="ms-1 badge bg-warning text-dark" style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('attention')">⚠ needs Q360 ID</span>
+      <span id="legend-missing"    class="ms-1 badge bg-danger"            style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('missing')">⚠ missing week (guessed)</span>
+      <span id="legend-incomplete" class="ms-1 badge bg-danger"            style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('incomplete')">⚠ &lt; 40h</span>
+    </h5>
+  </div>
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-1">
+    <div class="d-flex align-items-center gap-2">
+      <label class="form-label mb-0 small fw-semibold">Week:</label>
+      <select id="filter-week-min" class="form-select form-select-sm" style="width:auto" onchange="filterByWeek()">
+        {% for w in all_weeks %}
+        <option value="{{ w }}" {% if loop.first %}selected{% endif %}>Wk {{ w }}</option>
+        {% endfor %}
+      </select>
+      <span class="small">to</span>
+      <select id="filter-week-max" class="form-select form-select-sm" style="width:auto" onchange="filterByWeek()">
+        {% for w in all_weeks %}
+        <option value="{{ w }}" {% if loop.last %}selected{% endif %}>Wk {{ w }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showAllWeeks()">All</button>
+    </div>
+  </div>
+</div>
+
+<form id="bulk-submit-form"
+      hx-post="{{ url_for('bulk.review') }}"
+      hx-target="#bulk-result"
+      hx-indicator="#submit-spinner">
+
+  <input type="hidden" name="entries" id="entries-json" value="[]">
+
+  <div class="table-responsive" style="max-height:70vh;overflow-y:auto">
+  <table class="table table-sm table-bordered align-middle" id="bulk-tbl">
+    <thead class="table-dark" style="position:sticky;top:0;z-index:2">
+      <tr>
+        <th style="width:28px"></th>
+        <th style="width:90px">Week</th>
+        <th>Employee</th>
+        <th>Project</th>
+        <th style="width:100px">Q360 ID</th>
+        <th style="width:160px">Category</th>
+        {% for day in active_days %}
+        <th class="text-center" style="width:65px">{{ day }}</th>
+        {% endfor %}
+        <th class="text-nowrap" style="vertical-align:middle">
+          <div>Status</div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <div class="d-flex align-items-center gap-1">
+              <label class="form-check-label text-warning" style="font-size:.7rem;cursor:pointer" for="global-commit-cb">commit all</label>
+              <input type="checkbox" class="form-check-input border-warning" id="global-commit-cb"
+                     onchange="toggleCommitAll(this.checked)" style="cursor:pointer">
+            </div>
+            <div class="d-flex align-items-center gap-1">
+              <label class="form-check-label text-secondary" style="font-size:.7rem;cursor:pointer" for="global-skip-cb">skip all</label>
+              <input type="checkbox" class="form-check-input" id="global-skip-cb"
+                     onchange="toggleSkipAll(this.checked)" style="cursor:pointer">
+            </div>
+          </div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for user in grouped %}
+      {# ── User name header row ── #}
+      {% set has_guessed  = user.rows | selectattr('suggested')    | list | length > 0 %}
+      {% set has_missing  = user.rows | selectattr('missing_week') | list | length > 0 %}
+      <tr class="table-dark" data-user-header="{{ user.username }}" style="position:sticky;top:var(--thead-h,34px);z-index:1">
+        <td colspan="{{ 6 + active_days|length }}" class="fw-bold py-1 px-2" style="font-size:.85rem">
+          &#128100; {{ user.employee }} <span class="text-secondary fw-normal">({{ user.username }})</span>
+          {% if has_guessed  %}<span class="ms-2 badge bg-info text-dark"  style="font-size:.65rem">⚡ guessed</span>{% endif %}
+          {% if has_missing  %}<span class="ms-1 badge bg-danger"           style="font-size:.65rem">⚠ missing week</span>{% endif %}
+        </td>
+        <td class="text-end pe-2" style="white-space:nowrap;vertical-align:middle">
+          {% set has_errors = user.rows | selectattr('missing_week') | list | length > 0
+                           or user.rows | selectattr('needs_attention') | list | length > 0
+                           or user.rows | selectattr('suggested') | list | length > 0
+                           or user.rows | selectattr('project_guessed') | list | length > 0 %}
+          <span class="commit-cb-wrap me-2" style="{% if not has_errors %}display:none{% endif %}">
+            <label class="form-check-label small text-warning me-1" style="font-size:.75rem;cursor:pointer"
+                   for="commit-{{ user.username }}">commit</label>
+            <input type="checkbox" class="form-check-input commit-user-cb border-warning" id="commit-{{ user.username }}"
+                   data-commit-username="{{ user.username }}" onchange="toggleCommitUser(this)">
+          </span>
+          <label class="form-check-label small text-secondary me-1" style="font-size:.75rem;cursor:pointer"
+                 for="skip-{{ user.username }}">skip</label>
+          <input type="checkbox" class="form-check-input skip-user-cb" id="skip-{{ user.username }}"
+                 data-skip-username="{{ user.username }}" onchange="toggleSkipUser(this)">
+        </td>
+      </tr>
+
+      {% set ns = namespace(prev_week=-1) %}
+      {% for row in user.rows %}
+      {% set rid = 'r' ~ row.row_num %}
+
+        {# ── Weekly tally row (before first row of a new week, if not first week) ── #}
+        {% if row.week_num != ns.prev_week and ns.prev_week >= 0 %}
+        <tr class="table-secondary fw-semibold small"
+            data-tally-for="{{ user.username }}"
+            data-tally-week="{{ ns.prev_week }}">
+          <td class="p-1 text-center">
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    style="font-size:.7rem;line-height:1.3"
+                    onclick="addRowToWeek('{{ user.username }}','{{ user.employee }}',{{ ns.prev_week }},this)">+</button>
+          </td>
+          <td colspan="5" class="text-end text-muted pe-2">Wk {{ ns.prev_week }} daily total →</td>
+          {% for day in active_days %}
+          <td class="text-center" id="tally-{{ user.username }}-{{ ns.prev_week }}-{{ day }}">—</td>
+          {% endfor %}
+          <td class="text-center" id="tally-total-{{ user.username }}-{{ ns.prev_week }}"></td>
+        </tr>
+        {% endif %}
+        {% set ns.prev_week = row.week_num %}
+
+      <tr class="{% if row.missing_week %}table-danger{% elif row.suggested %}table-info{% elif row.needs_attention %}table-warning{% endif %}"
+          data-username="{{ row.username }}"
+          data-rownum="{{ row.row_num }}"
+          data-week="{{ row.week_num }}"
+          data-attention="{{ 'true' if (row.needs_attention and not row.missing_week and not (row.suggested or row.project_guessed)) else 'false' }}"
+          data-missing="{{ 'true' if row.missing_week else 'false' }}"
+          data-suggested="{{ 'true' if (not row.missing_week and not row.needs_attention and (row.suggested or row.project_guessed)) else 'false' }}"
+          {% if row.missing_week %}style="opacity:.85;background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(220,53,69,.07) 6px,rgba(220,53,69,.07) 12px)"{% endif %}>
+
+        <td class="text-center p-1">
+          <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1"
+                  style="font-size:.75rem;line-height:1.3"
+                  onclick="deleteRow(this)">×</button>
+        </td>
+        <td class="small text-nowrap">
+          <span class="fw-semibold">Wk {{ row.week_num }}</span><br>
+          <span class="text-muted" style="font-size:.65rem">{{ row.week_range.split(': ', 1)[-1] }}</span>
+        </td>
+        <td class="text-nowrap small">{{ user.employee }}</td>
+        <td style="max-width:220px" class="{% if row.project_guessed %}bg-info bg-opacity-25{% endif %}"
+            {% if row.project_guessed %}style="border:2px solid #0dcaf0!important"{% endif %}>
+          {% set user_projs = user_projects.get(user.username, []) %}
+          {% set ns2 = namespace(matched=false) %}
+          <select class="form-select form-select-sm project-field" data-row="{{ rid }}"
+                  onchange="onProjectChange(this)">
+            <option value="">— select —</option>
+            {% for proj in user_projs %}
+              {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') %}
+              {% set sel = (proj.customer == row.customer and proj.project == row.project) %}
+              {% if sel %}{% set ns2.matched = true %}{% endif %}
+              <option value="{{ loop.index0 }}"
+                      data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
+                      {% if sel %}selected{% endif %}>{{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}</option>
+            {% endfor %}
+            {% if not ns2.matched and row.customer %}
+              {% set lbl = row.customer ~ (' — ' ~ row.project if row.project else '') %}
+              <option value="__current__" selected data-q360="{{ row.q360id }}" data-cat="{{ row.category }}">
+                {{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}
+              </option>
+            {% endif %}
+            {% if default_types %}
+            <optgroup label="─── Default Types ───">
+              {% for dt in default_types %}
+              <option value="__dt_{{ loop.index0 }}"
+                      data-q360="{{ dt.q360id }}" data-cat="">
+                {{ dt.label }} — {{ dt.project[:50] }}{% if dt.project|length > 50 %}…{% endif %}
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          </select>
+          {% if row.project_guessed %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
+        </td>
+
+        {# Q360 ID column #}
+        <td class="{% if row.suggested %}bg-info bg-opacity-25{% endif %}">
+          {% if not row.needs_attention %}
+            <input type="text" class="form-control form-control-sm q360id-field"
+                   data-row="{{ rid }}" value="{{ row.q360id }}"
+                   {% if row.suggested %}title="⚡ Guessed — please verify"{% endif %}>
+            {% if row.suggested %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
+          {% elif row.recommended_q360ids | length == 1 %}
+            <input type="text" class="form-control form-control-sm q360id-field"
+                   data-row="{{ rid }}" value="{{ row.recommended_q360ids[0] }}"
+                   title="⚡ Suggested from previous week">
+            <div class="text-info" style="font-size:.65rem">⚡ suggested</div>
+          {% elif row.recommended_q360ids | length > 1 %}
+            <select class="form-select form-select-sm q360id-field" data-row="{{ rid }}">
+              <option value="">— pick —</option>
+              {% for qid in row.recommended_q360ids %}
+              <option value="{{ qid }}">{{ qid }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" class="form-control form-control-sm q360id-field"
+                   data-row="{{ rid }}" value="" placeholder="enter ID">
+          {% endif %}
+        </td>
+
+        {# Category column #}
+        <td>
+          <select class="form-select form-select-sm category-field" data-row="{{ rid }}"
+                  {% if row.needs_attention and not row.recommended_q360ids %}disabled{% endif %}>
+            {% for c in categories %}
+            <option value="{{ c }}" {% if c == default_category %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </td>
+
+        {# Day hour cells #}
+        {% for day in active_days %}
+        {% set d = row.days[day] %}
+        <td class="text-center p-1">
+          {% if d.hours > 0 %}
+          <input type="number" class="form-control form-control-sm hours-field text-center"
+                 style="width:55px;margin:auto"
+                 data-row="{{ rid }}" data-username="{{ row.username }}"
+                 data-week="{{ row.week_num }}" data-date="{{ d.date }}"
+                 value="{{ d.hours }}" min="0.5" max="24" step="0.5"
+                 {% if row.needs_attention and not row.recommended_q360ids %}disabled{% endif %}>
+          <div class="text-muted" style="font-size:.6rem">{{ d.date[5:] }}</div>
+          {% else %}
+          <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+
+        <td>
+          {% if row.missing_week %}
+            <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
+            <div style="font-size:.6rem;color:#888">from Wk {{ row.missing_guessed_from }}</div>
+          {% elif row.needs_attention and not row.recommended_q360ids %}
+            <span class="badge bg-warning text-dark">⚠ No Q360 ID</span>
+          {% elif row.suggested or row.project_guessed %}
+            <span class="badge bg-info text-dark">⚡ guessed</span>
+          {% elif row.needs_attention and row.recommended_q360ids | length > 1 %}
+            <span class="badge bg-warning text-dark">pick ID</span>
+          {% else %}
+            <span class="badge bg-success" data-row-status="{{ rid }}">OK</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+
+      {# ── Final week tally row for this user ── #}
+      {% if ns.prev_week >= 0 %}
+      <tr class="table-secondary fw-semibold small"
+          data-tally-for="{{ user.username }}"
+          data-tally-week="{{ ns.prev_week }}">
+        <td class="p-1 text-center">
+          <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                  style="font-size:.7rem;line-height:1.3"
+                  onclick="addRowToWeek('{{ user.username }}','{{ user.employee }}',{{ ns.prev_week }},this)">+</button>
+        </td>
+        <td colspan="5" class="text-end text-muted pe-2">Wk {{ ns.prev_week }} daily total →</td>
+        {% for day in active_days %}
+        <td class="text-center" id="tally-{{ user.username }}-{{ ns.prev_week }}-{{ day }}">—</td>
+        {% endfor %}
+        <td class="text-center" id="tally-total-{{ user.username }}-{{ ns.prev_week }}"></td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="d-flex align-items-center gap-3 mt-3">
+    <button type="submit" id="submit-btn" class="btn btn-primary" disabled>
+      Confirm
+    </button>
+    <span id="submit-spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary"></span>
+    <span id="validation-msg" class="text-danger small"></span>
+  </div>
+</form>
+
+<div id="bulk-result" class="mt-3"></div>
+
+<script>
+const USER_PROJECTS = {{ user_projects | tojson }};
+
+function getProjectRows() {
+  return Array.from(document.querySelectorAll('tr[data-rownum]'));
+}
+
+function onProjectChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.dataset.q360) return;
+  const tr = sel.closest('tr');
+  const q360 = tr.querySelector('.q360id-field');
+  const cat  = tr.querySelector('.category-field');
+  if (q360 && opt.dataset.q360) q360.value = opt.dataset.q360;
+  if (cat  && opt.dataset.cat)  cat.value  = opt.dataset.cat;
+  updateTallies(); validate();
+}
+
+function isUserSkipped(username) {
+  const cb = document.querySelector('.skip-user-cb[data-skip-username="' + username + '"]');
+  return cb && cb.checked;
+}
+
+function isUserCommitted(username) {
+  const cb = document.querySelector('.commit-user-cb[data-commit-username="' + username + '"]');
+  return cb && cb.checked;
+}
+
+function toggleCommitUser(cb) {
+  const username = cb.dataset.commitUsername;
+  const committed = cb.checked;
+  // Strikethrough error/guessed badges on that user's rows
+  getProjectRows().forEach(tr => {
+    if (tr.dataset.username !== username) return;
+    tr.querySelectorAll('.badge.bg-danger, .badge.bg-warning, .badge.bg-info').forEach(badge => {
+      badge.style.textDecoration = committed ? 'line-through' : '';
+      badge.style.opacity = committed ? '0.6' : '';
+    });
+  });
+  // Strikethrough tally warning total cells
+  document.querySelectorAll('tr[data-tally-for="' + username + '"]').forEach(tally => {
+    const totalCell = tally.querySelector('[id^="tally-total-"]');
+    if (totalCell && totalCell.classList.contains('text-danger')) {
+      totalCell.style.textDecoration = committed ? 'line-through' : '';
+      totalCell.style.opacity = committed ? '0.6' : '';
+    }
+  });
+  // Also strikethrough the header badges
+  const hdr = document.querySelector('tr[data-user-header="' + username + '"]');
+  if (hdr) hdr.querySelectorAll('.badge').forEach(b => {
+    b.style.textDecoration = committed ? 'line-through' : '';
+    b.style.opacity = committed ? '0.6' : '';
+  });
+  validate();
+}
+
+function toggleSkipUser(cb) {
+  filterByWeek();
+  validate();
+  // Sync the skip-all checkbox state
+  const allCbs = Array.from(document.querySelectorAll('.skip-user-cb')).filter(c => {
+    const hdr = document.querySelector('tr[data-user-header="' + c.dataset.skipUsername + '"]');
+    return hdr && hdr.style.display !== 'none';
+  });
+  const skipAllCb = document.getElementById('global-skip-cb');
+  if (skipAllCb) skipAllCb.checked = allCbs.length > 0 && allCbs.every(c => c.checked);
+}
+
+function toggleSkipAll(checked) {
+  document.querySelectorAll('tr[data-user-header]').forEach(hdr => {
+    if (hdr.style.display === 'none') return;
+    const cb = hdr.querySelector('.skip-user-cb');
+    if (cb) cb.checked = checked;
+  });
+  filterByWeek();
+  validate();
+}
+
+function toggleCommitAll(checked) {
+  document.querySelectorAll('tr[data-user-header]').forEach(hdr => {
+    if (hdr.style.display === 'none') return;
+    const cb = hdr.querySelector('.commit-user-cb');
+    if (cb && hdr.querySelector('.commit-cb-wrap')?.style.display !== 'none') {
+      cb.checked = checked;
+      toggleCommitUser(cb);
+    }
+  });
+}
+
+const _activeTypeFilters = new Set();
+const TYPE_BADGE_MAP = { suggested: 'legend-guessed', attention: 'legend-attention', missing: 'legend-missing', incomplete: 'legend-incomplete' };
+
+function _applyBadgeStyles() {
+  const allEl = document.getElementById('legend-all');
+  const noneActive = _activeTypeFilters.size === 0;
+  if (allEl) { allEl.style.outline = noneActive ? '2px solid #000' : ''; allEl.style.opacity = '1'; }
+  Object.entries(TYPE_BADGE_MAP).forEach(([t, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.outline = _activeTypeFilters.has(t) ? '2px solid #000' : '';
+    el.style.opacity = (!noneActive && !_activeTypeFilters.has(t)) ? '0.4' : '1';
+  });
+}
+
+function toggleTypeFilter(type) {
+  if (type === null) {
+    _activeTypeFilters.clear();
+  } else {
+    if (_activeTypeFilters.has(type)) _activeTypeFilters.delete(type);
+    else _activeTypeFilters.add(type);
+  }
+  _applyBadgeStyles();
+  filterByWeek();
+}
+
+function filterByWeek() {
+  const minSel = document.getElementById('filter-week-min');
+  const maxSel = document.getElementById('filter-week-max');
+  let minW = parseInt(minSel.value);
+  let maxW = parseInt(maxSel.value);
+
+  // Disable options that would violate min <= max
+  minSel.querySelectorAll('option').forEach(o => { o.disabled = parseInt(o.value) > maxW; });
+  maxSel.querySelectorAll('option').forEach(o => { o.disabled = parseInt(o.value) < minW; });
+
+  // Auto-correct if current selection is now invalid
+  if (minW > maxW) { minSel.value = maxW; minW = maxW; }
+  if (maxW < minW) { maxSel.value = minW; maxW = minW; }
+
+  const lo = minW, hi = maxW;
+
+  getProjectRows().forEach(tr => {
+    const w = parseInt(tr.dataset.week);
+    const inWeek = (w >= lo && w <= hi);
+    let inType;
+    if (_activeTypeFilters.size === 0) {
+      inType = true;
+    } else {
+      inType = Array.from(_activeTypeFilters).some(f => {
+        if (f === 'incomplete') {
+          const tallyRow = document.querySelector('tr[data-tally-for="' + tr.dataset.username + '"][data-tally-week="' + tr.dataset.week + '"]');
+          return tallyRow && parseFloat(tallyRow.dataset.weekTotal || 0) < 40 && parseFloat(tallyRow.dataset.weekTotal || 0) > 0;
+        }
+        return tr.dataset[f] === 'true';
+      });
+    }
+    tr.style.display = (inWeek && inType) ? '' : 'none';
+    tr.style.opacity = isUserSkipped(tr.dataset.username) ? '0.3' : '';
+  });
+  document.querySelectorAll('tr[data-tally-for][data-tally-week]').forEach(tr => {
+    const username = tr.dataset.tallyFor;
+    const w = parseInt(tr.dataset.tallyWeek);
+    const inWeek = (w >= lo && w <= hi);
+    const hasVisibleRows = inWeek && getProjectRows().some(r =>
+      r.dataset.username === username && parseInt(r.dataset.week) === w && r.style.display !== 'none'
+    );
+    tr.style.display = hasVisibleRows ? '' : 'none';
+    tr.style.opacity = isUserSkipped(username) ? '0.3' : '';
+  });
+  document.querySelectorAll('tr[data-user-header]').forEach(tr => {
+    const username = tr.dataset.userHeader;
+    const hasVisible = getProjectRows().some(r =>
+      r.dataset.username === username && r.style.display !== 'none'
+    );
+    tr.style.display = hasVisible ? '' : 'none';
+  });
+
+  // Update per-user header badges based on their visible rows
+  document.querySelectorAll('tr[data-user-header]').forEach(headerTr => {
+    const username = headerTr.dataset.userHeader;
+    const userVisible = getProjectRows().filter(tr =>
+      tr.dataset.username === username && tr.style.display !== 'none'
+    );
+    const guessedBadge = headerTr.querySelector('.badge.bg-info');
+    if (guessedBadge) guessedBadge.style.display =
+      userVisible.some(tr => tr.dataset.suggested === 'true') ? '' : 'none';
+    const missingBadge = headerTr.querySelector('.badge.bg-danger');
+    if (missingBadge) missingBadge.style.display =
+      userVisible.some(tr => tr.dataset.missing === 'true') ? '' : 'none';
+  });
+
+  // Show/hide legend badges based on whether matching rows exist (opacity handled by _applyBadgeStyles)
+  const visible = getProjectRows().filter(tr => tr.style.display !== 'none');
+  const badgeExists = {
+    suggested:  visible.some(tr => tr.dataset.suggested === 'true'),
+    attention:  visible.some(tr => tr.dataset.attention === 'true'),
+    missing:    visible.some(tr => tr.dataset.missing   === 'true'),
+    incomplete: Array.from(document.querySelectorAll('tr[data-tally-for][data-tally-week]'))
+                  .filter(tr => tr.style.display !== 'none')
+                  .some(tr => { const t = parseFloat(tr.dataset.weekTotal || 0); return t > 0 && t < 40; }),
+  };
+  Object.entries(TYPE_BADGE_MAP).forEach(([t, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = badgeExists[t] ? '' : 'none';
+    if (!badgeExists[t] && _activeTypeFilters.has(t)) _activeTypeFilters.delete(t);
+  });
+  _applyBadgeStyles();
+  // Re-evaluate Confirm button for currently visible rows
+  if (window.validate) validate();
+}
+
+function showAllWeeks() {
+  const weeks = Array.from(document.querySelectorAll('#filter-week-min option')).map(o => parseInt(o.value));
+  if (!weeks.length) return;
+  document.getElementById('filter-week-min').value = Math.min(...weeks);
+  document.getElementById('filter-week-max').value = Math.max(...weeks);
+  filterByWeek();
+}
+
+function deleteRow(btn) {
+  const tr = btn.closest('tr');
+  tr.remove();
+  updateTallies();
+  validate();
+}
+
+let _newRowCounter = 10000;
+
+function addRowToWeek(username, employee, weekNum, btn) {
+  // Find the first data row for this user+week and insert before it
+  const allRows = getProjectRows();
+  const firstInWeek = allRows.find(tr =>
+    tr.dataset.username === username && parseInt(tr.dataset.week) === weekNum
+  );
+  _addRowImpl(username, employee, weekNum, firstInWeek || btn.closest('tr'));
+}
+
+function addRow(username, employee, btn) {
+  _addRowImpl(username, employee, 0, btn.closest('tr').nextElementSibling);
+}
+
+async function _addRowImpl(username, employee, weekNum, insertBeforeEl) {
+  _newRowCounter++;
+  const rid = 'r' + _newRowCounter;
+  const ACTIVE_DAYS    = {{ active_days | tojson }};
+  const ACTIVE_WEEKS   = {{ all_weeks | tojson }};
+  const CATEGORIES     = {{ categories | tojson }};
+  const DEFAULT_CAT    = {{ default_category | tojson }};
+  const DEFAULT_TYPES  = {{ default_types | tojson }};
+
+  // Day cells
+  const dayCells = ACTIVE_DAYS.map(d =>
+    `<td class="text-center p-1">
+      <input type="number" class="form-control form-control-sm hours-field text-center"
+             style="width:55px;margin:auto"
+             data-row="${rid}" data-username="${username}" data-week="0" data-date=""
+             value="0" min="0" max="24" step="0.5">
+    </td>`
+  ).join('');
+
+  // Category options
+  const catOpts = CATEGORIES.map(c =>
+    `<option value="${c}"${c === DEFAULT_CAT ? ' selected' : ''}>${c}</option>`
+  ).join('');
+
+  const weekOpts = ACTIVE_WEEKS.map(w =>
+    `<option value="${w}"${w === weekNum ? ' selected' : ''}>Wk ${w}</option>`
+  ).join('');
+
+  const tr = document.createElement('tr');
+  tr.dataset.username = username;
+  tr.dataset.rownum   = _newRowCounter;
+  tr.dataset.week     = weekNum || (ACTIVE_WEEKS[ACTIVE_WEEKS.length - 1] || 0);
+  tr.dataset.attention = 'false';
+  tr.innerHTML = `
+    <td class="text-center p-1">
+      <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1"
+              style="font-size:.75rem;line-height:1.3"
+              onclick="deleteRow(this)">×</button>
+    </td>
+    <td class="small text-nowrap">
+      <select class="form-select form-select-sm" style="width:75px;font-size:.75rem"
+              onchange="this.closest('tr').dataset.week=this.value;updateTallies();validate();filterByWeek()">
+        ${weekOpts}
+      </select>
+    </td>
+    <td class="text-nowrap small">${employee}</td>
+    <td style="max-width:200px">
+      <select class="form-select form-select-sm new-proj-select" data-row="${rid}"
+              onchange="applyProjectChoice(this)">
+        <option value="">Loading projects…</option>
+      </select>
+      <input type="text" class="form-control form-control-sm mt-1 new-proj-custom" placeholder="Project" style="display:none">
+    </td>
+    <td><input type="text" class="form-control form-control-sm q360id-field" data-row="${rid}" value=""></td>
+    <td><select class="form-select form-select-sm category-field" data-row="${rid}">${catOpts}</select></td>
+    ${dayCells}
+    <td>
+      <span class="badge bg-secondary">new</span>
+    </td>`;
+
+  if (insertBeforeEl && insertBeforeEl.parentNode) {
+    insertBeforeEl.parentNode.insertBefore(tr, insertBeforeEl);
+  } else {
+    document.querySelector('#bulk-tbl tbody').appendChild(tr);
+  }
+
+  // Fetch live projects for this user (same endpoint as Submit Hours)
+  const sel = tr.querySelector('.new-proj-select');
+  try {
+    const resp = await fetch(`/hours/projects?user=${encodeURIComponent(username)}`);
+    const html = await resp.text();
+    const doc = new DOMParser().parseFromString('<select>' + html + '</select>', 'text/html');
+    const fetched = Array.from(doc.querySelectorAll('option'));
+
+    sel.innerHTML = '<option value="">— select project —</option>';
+    fetched.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;          // resq_zoom_key = Q360 task number
+      o.textContent = opt.textContent.trim();
+      sel.appendChild(o);
+    });
+
+    if (DEFAULT_TYPES.length) {
+      const grp = document.createElement('optgroup');
+      grp.label = '─── Default Types ───';
+      DEFAULT_TYPES.forEach((dt, i) => {
+        const o = document.createElement('option');
+        o.value = `__dt_${i}`;
+        o.dataset.q360 = dt.q360id;
+        o.textContent = `${dt.label} — ${dt.project}`;
+        grp.appendChild(o);
+      });
+      sel.appendChild(grp);
+    }
+
+    const customOpt = document.createElement('option');
+    customOpt.value = '__custom__';
+    customOpt.textContent = '✏ Custom…';
+    sel.appendChild(customOpt);
+  } catch(e) {
+    sel.innerHTML = '<option value="">— failed to load projects —</option>';
+  }
+
+  updateTallies();
+  validate();
+}
+
+function applyProjectChoice(sel) {
+  const tr = sel.closest('tr');
+  const val = sel.value;
+  const customs = tr.querySelectorAll('.new-proj-custom');
+  if (val === '__custom__') {
+    customs.forEach(i => i.style.display = '');
+    return;
+  }
+  customs.forEach(i => i.style.display = 'none');
+  if (val === '') return;
+  const q360Field = tr.querySelector('.q360id-field');
+  if (!q360Field) return;
+  // Default type: q360id stored in data-q360
+  if (val.startsWith('__dt_')) {
+    const opt = sel.options[sel.selectedIndex];
+    q360Field.value = opt.dataset.q360 || '';
+    return;
+  }
+  // Live project: option value IS the Q360 task number
+  q360Field.value = val;
+}
+
+(function() {
+  const VALID_CATEGORIES = {{ categories | tojson }};
+  const ACTIVE_DAYS = {{ active_days | tojson }};
+
+  function getDayForInput(inp) {
+    const td = inp.closest('td');
+    if (!td) return null;
+    const tr = td.closest('tr');
+    const tds = Array.from(tr.querySelectorAll('td'));
+    const tdIdx = tds.indexOf(td);
+    // day columns start after: del, week, employee, customer, q360id, category = 6 fixed cols
+    const dayIdx = tdIdx - 6;
+    return (dayIdx >= 0 && dayIdx < ACTIVE_DAYS.length) ? ACTIVE_DAYS[dayIdx] : null;
+  }
+
+  function updateTallies() {
+    document.querySelectorAll('tr[data-tally-for][data-tally-week]').forEach(tally => {
+      const username = tally.dataset.tallyFor;
+      const weekNum  = tally.dataset.tallyWeek;
+      ACTIVE_DAYS.forEach(day => {
+        const cell = document.getElementById('tally-' + username + '-' + weekNum + '-' + day);
+        if (!cell) return;
+        let total = 0, hasAny = false;
+        getProjectRows().forEach(tr => {
+          if (tr.dataset.username !== username || tr.dataset.week !== weekNum) return;
+          tr.querySelectorAll('.hours-field').forEach(inp => {
+            if (getDayForInput(inp) === day) {
+              total += parseFloat(inp.value || 0);
+              hasAny = true;
+            }
+          });
+        });
+        if (!hasAny) { cell.textContent = '—'; cell.className = 'text-center text-muted'; return; }
+        const ok = Math.abs(total - 8) < 0.01;
+        cell.textContent = total + 'h';
+        cell.className = 'text-center fw-semibold ' + (ok ? 'text-success' : 'text-danger');
+      });
+
+      // Weekly total in status cell
+      const totalCell = document.getElementById('tally-total-' + username + '-' + weekNum);
+      if (totalCell) {
+        let weekTotal = 0;
+        getProjectRows().forEach(tr => {
+          if (tr.dataset.username !== username || tr.dataset.week !== weekNum) return;
+          tr.querySelectorAll('.hours-field').forEach(inp => { weekTotal += parseFloat(inp.value || 0); });
+        });
+        tally.dataset.weekTotal = weekTotal;
+        if (weekTotal === 0) {
+          totalCell.textContent = '';
+          totalCell.className = '';
+        } else if (weekTotal >= 40) {
+          totalCell.textContent = weekTotal + 'h';
+          totalCell.className = 'text-start fw-semibold text-success';
+        } else {
+          totalCell.textContent = weekTotal + 'h ⚠';
+          totalCell.className = 'text-start fw-semibold text-danger';
+          // Show commit checkbox for this user since they have a < 40h error
+          const hdr = document.querySelector('tr[data-user-header="' + username + '"]');
+          if (hdr) { const wrap = hdr.querySelector('.commit-cb-wrap'); if (wrap) wrap.style.display = ''; }
+        }
+      }
+    });
+  }
+
+  function validate() {
+    const minSel = document.getElementById('filter-week-min');
+    const maxSel = document.getElementById('filter-week-max');
+    const lo = parseInt(minSel ? minSel.value : 0);
+    const hi = parseInt(maxSel ? maxSel.value : 9999);
+
+    // Active rows: in week range, user not skipped, user not committed
+    const activeRows = getProjectRows().filter(tr => {
+      const w = parseInt(tr.dataset.week);
+      return w >= lo && w <= hi
+        && !isUserSkipped(tr.dataset.username)
+        && !isUserCommitted(tr.dataset.username);
+    });
+
+    // Block if any active row has guessed, missing, or attention status
+    const hasStatusError = activeRows.some(tr =>
+      tr.dataset.suggested === 'true' ||
+      tr.dataset.missing   === 'true' ||
+      tr.dataset.attention === 'true'
+    );
+
+    // Block if any active user/week has total < 40h
+    const weekTotals = {};
+    activeRows.forEach(tr => {
+      const key = tr.dataset.username + '|' + tr.dataset.week;
+      if (!weekTotals[key]) weekTotals[key] = 0;
+      tr.querySelectorAll('.hours-field').forEach(inp => {
+        weekTotals[key] += parseFloat(inp.value || 0);
+      });
+    });
+    const hasLowHours = Object.values(weekTotals).some(t => t > 0 && t < 40);
+
+    document.getElementById('submit-btn').disabled = hasStatusError || hasLowHours;
+    document.getElementById('validation-msg').textContent = '';
+  }
+
+  function buildPayload() {
+    const rows = [];
+    getProjectRows().forEach(tr => {
+      if (isUserSkipped(tr.dataset.username)) return;
+      const q360id = tr.querySelector('.q360id-field')?.value || '';
+      const category = tr.querySelector('.category-field')?.value || '';
+      const days = [];
+      tr.querySelectorAll('.hours-field').forEach(inp => {
+        const day = getDayForInput(inp);
+        if (day && parseFloat(inp.value) > 0) {
+          days.push({ day, date: inp.dataset.date, hours: parseFloat(inp.value) });
+        }
+      });
+      if (days.length === 0) return;
+      rows.push({
+        row_num: tr.dataset.rownum,
+        username: tr.dataset.username,
+        employee: tr.closest('tbody').querySelector('td:nth-child(2)')?.textContent?.trim() || '',
+        q360id, category,
+        needs_attention: !q360id,
+        company: 'CONNEX TELECOMMUNICATIONS INC.',
+        comment: '',
+        days,
+      });
+    });
+    document.getElementById('entries-json').value = JSON.stringify(rows);
+  }
+
+  function lockFields() {
+    document.querySelectorAll('#bulk-tbl input, #bulk-tbl select').forEach(el => { el.disabled = true; });
+    document.querySelectorAll('#bulk-tbl button').forEach(el => { el.disabled = true; });
+    const btn = document.getElementById('submit-btn');
+    btn.textContent = 'Confirming…';
+    btn.disabled = true;
+  }
+
+  document.addEventListener('change', () => { updateTallies(); validate(); filterByWeek(); });
+  document.getElementById('bulk-submit-form').addEventListener('submit', () => {
+    lockFields();
+  });
+  document.getElementById('bulk-submit-form').addEventListener('htmx:configRequest', function(evt) {
+    buildPayload();
+    evt.detail.parameters['entries'] = document.getElementById('entries-json').value;
+  });
+  document.getElementById('bulk-submit-form').addEventListener('htmx:afterRequest', () => {
+    document.getElementById('bulk-result').scrollIntoView({ behavior: 'smooth' });
+  });
+
+  updateTallies();
+  validate();
+  filterByWeek();
+
+  // Set --thead-h so user header rows stick just below the thead
+  const thead = document.querySelector('#bulk-tbl thead');
+  if (thead) {
+    document.querySelector('.table-responsive').style.setProperty('--thead-h', thead.offsetHeight + 'px');
+  }
+
+  // Expose helpers needed by functions outside this IIFE
+  window.getDayForInput = getDayForInput;
+  window.updateTallies  = updateTallies;
+  window.validate       = validate;
+})();
+</script>
+{% endif %}

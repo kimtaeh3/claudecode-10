@@ -42,17 +42,15 @@
         </span>
       </div>
 
-      {% if is_admin %}
       <div class="mb-3">
         <label class="form-label">Category</label>
         <select name="category" class="form-select">
           <option value="">Auto (from task)</option>
           {% for c in categories %}
-          <option value="{{ c }}">{{ c }}</option>
+          <option value="{{ c }}" {% if c == 'VOICE- CCAPPDEV' %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
       </div>
-      {% endif %}
 
       <div class="mb-3">
         <label class="form-label">Company</label>
@@ -67,11 +65,13 @@
         <label class="form-label">Entry type</label>
         <div class="d-flex gap-3">
           <div class="form-check">
-            <input class="form-check-input" type="radio" name="entry" value="Single" id="single" checked>
+            <input class="form-check-input" type="radio" name="entry" value="Single" id="single"
+                   onchange="toggleEntry('Single')">
             <label class="form-check-label" for="single">Single</label>
           </div>
           <div class="form-check">
-            <input class="form-check-input" type="radio" name="entry" value="Multiple" id="multiple">
+            <input class="form-check-input" type="radio" name="entry" value="Multiple" id="multiple" checked
+                   onchange="toggleEntry('Multiple')">
             <label class="form-check-label" for="multiple">Multiple days</label>
           </div>
         </div>
@@ -97,14 +97,14 @@
       <div id="mode-time">
         <div class="row g-2 mb-3">
           <div class="col-6">
-            <label class="form-label">Start date</label>
+            <label class="form-label date-label">Start date</label>
             <input type="date" name="start_date" class="form-control">
           </div>
           <div class="col-6">
             <label class="form-label">Start time</label>
             <input type="time" name="start_time" class="form-control" value="09:00">
           </div>
-          <div class="col-6">
+          <div class="col-6 end-date-row">
             <label class="form-label">End date</label>
             <input type="date" name="end_date" class="form-control">
           </div>
@@ -119,10 +119,10 @@
       <div id="mode-hours" style="display:none">
         <div class="row g-2 mb-3">
           <div class="col-6">
-            <label class="form-label">Start date</label>
+            <label class="form-label date-label">Start date</label>
             <input type="date" name="start_date" class="form-control">
           </div>
-          <div class="col-6">
+          <div class="col-6 end-date-row">
             <label class="form-label">End date</label>
             <input type="date" name="end_date" class="form-control">
           </div>
@@ -163,6 +163,22 @@
 function toggleMode(mode) {
   document.getElementById('mode-time').style.display = mode === 'time' ? '' : 'none';
   document.getElementById('mode-hours').style.display = mode === 'hours' ? '' : 'none';
+  const entry = document.querySelector('input[name="entry"]:checked')?.value || 'Multiple';
+  toggleEntry(entry);
 }
+
+function toggleEntry(entry) {
+  const single = (entry === 'Single');
+  document.querySelectorAll('.end-date-row').forEach(el => {
+    el.style.display = single ? 'none' : '';
+  });
+  document.querySelectorAll('.date-label').forEach(el => {
+    el.textContent = single ? 'Date' : 'Start date';
+  });
+  // For Single mode the backend uses start_date as the only day, so no end_date needed.
+}
+
+// Apply initial state on load
+toggleEntry('Multiple');
 </script>
 {% endblock %}

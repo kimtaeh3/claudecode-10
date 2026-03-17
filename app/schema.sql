@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS forecast (
     rem          INTEGER NOT NULL DEFAULT 0
 );
 
+-- Bulk upload default type config
+CREATE TABLE IF NOT EXISTS bulk_config (
+    key      TEXT PRIMARY KEY,
+    project  TEXT NOT NULL DEFAULT '',
+    q360id   TEXT NOT NULL DEFAULT ''
+);
+
 -- Forecast weeks
 CREATE TABLE IF NOT EXISTS forecast_week (
     forecast_week_id INTEGER PRIMARY KEY AUTOINCREMENT,

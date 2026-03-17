@@ -10,15 +10,16 @@ def create_app():
 
     db.init_app(app)
 
-    from app.routes import auth, hours, forecast, admin
+    from app.routes import auth, hours, forecast, admin, bulk
     app.register_blueprint(auth.bp)
     app.register_blueprint(hours.bp)
     app.register_blueprint(forecast.bp)
     app.register_blueprint(admin.bp)
+    app.register_blueprint(bulk.bp)
 
     @app.route('/')
     def index():
-        return redirect(url_for('hours.view'))
+        return redirect(url_for('bulk.index'))
 
     @app.errorhandler(404)
     def not_found(e):

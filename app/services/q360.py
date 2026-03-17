@@ -126,6 +126,42 @@ class Q360Service:
             'projectTotalReport': self._parse_project_total(raw),
         }
 
+    def get_timebills_rest(self, min_date: str, max_date: str) -> list:
+        """
+        Use the Q360 REST API to list all timebills in a date range.
+        Returns the raw list of timebill dicts from the API.
+        """
+        import base64
+        credentials = base64.b64encode(
+            f"{self.user_id}:{self.password}".encode()
+        ).decode()
+        headers = {
+            'Authorization': f'Basic {credentials}',
+            'Content-Type': 'application/json',
+            'X-HTTP-Method-Override': 'List',
+        }
+        url = f"{BASE_URL}/director.php/Q360API/q360data/V1/TimeBills"
+        r = requests.post(
+            url,
+            headers=headers,
+            params={
+                'responsetype': 'JSON',
+                'dataonly': '',
+                'MinDate': min_date,
+                'MaxDate': max_date,
+            },
+            verify=False,
+        )
+        data = r.json()
+        # REST API wraps results; handle both list and dict responses
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for key in ('Data', 'data', 'TimeBills', 'timebills', 'results'):
+                if key in data:
+                    return data[key]
+        return data
+
     # ------------------------------------------------------------------ #
     # Projects
     # ------------------------------------------------------------------ #

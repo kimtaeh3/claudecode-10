@@ -1,5 +1,6 @@
 .env
 /database/.env
+/sample/
 credentials.txt
 accounts.csv
 env

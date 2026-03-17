@@ -18,7 +18,7 @@ def login_required(f):
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if session.get('user_id'):
-        return redirect(url_for('hours.view'))
+        return redirect(url_for('bulk.index'))
     error = None
     if request.method == 'POST':
         user_id = request.form['user_id'].strip()
@@ -36,7 +36,7 @@ def login():
                     (user_id, request.remote_addr)
                 )
                 db.commit()
-                return redirect(url_for('hours.submit'))
+                return redirect(url_for('bulk.index'))
             else:
                 error = 'Invalid credentials. Please try again.'
         except Exception:
