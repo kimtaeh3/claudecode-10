@@ -26,6 +26,9 @@ def login():
         try:
             svc = Q360Service(user_id, password)
             data = svc.login()
+        except Exception:
+            error = 'Could not reach Q360. Check your connection.'
+        else:
             if data.get('success'):
                 session.clear()
                 session['user_id'] = user_id
@@ -39,8 +42,6 @@ def login():
                 return redirect(url_for('bulk.index'))
             else:
                 error = 'Invalid credentials. Please try again.'
-        except Exception:
-            error = 'Could not reach Q360. Check your connection.'
     return render_template('login.html', error=error)
 
 
