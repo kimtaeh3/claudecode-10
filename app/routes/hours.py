@@ -83,6 +83,58 @@ def submit():
                            is_admin=True)
 
 
+@bp.route('/preview', methods=['POST'])
+@login_required
+def preview():
+    f = request.form
+    task_number = f.get('task_number', '')
+    task_label = f.get('task_label', task_number)
+    entry = f.get('entry', 'Single')
+    mode = f.get('mode', 'time')
+    note = f.get('note', 'POWERED BY Q360 AUTO APP')
+    company = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
+    include_weekends = f.get('weekends') == 'on'
+    target_user = f.get('target_user') or session['user_id']
+    category = f.get('category') or 'Auto (from task)'
+
+    rows = []
+    try:
+        if mode == 'time':
+            start_date = f['start_date']
+            start_time = f['start_time']
+            end_date = f['end_date'] if entry == 'Multiple' else start_date
+            end_time = f['end_time']
+            days = (pandas.date_range(start_date, end_date)
+                    if include_weekends
+                    else pandas.bdate_range(start_date, end_date, freq='B'))
+            sd = datetime.strptime(f"{start_date} {start_time}", '%Y-%m-%d %H:%M')
+            ed = datetime.strptime(f"{start_date} {end_time}", '%Y-%m-%d %H:%M')
+            hours = (ed - sd).total_seconds() / 3600
+            for day in days.strftime('%Y-%m-%d').tolist():
+                rows.append({'date': day, 'start': start_time, 'end': end_time, 'hours': hours})
+        else:
+            start_date = f['start_date']
+            end_date = f['end_date'] if entry == 'Multiple' else start_date
+            start_time = f['start_time']
+            hours_log = int(f.get('hours_log', 0))
+            days = (pandas.date_range(start_date, end_date)
+                    if include_weekends
+                    else pandas.bdate_range(start_date, end_date, freq='B'))
+            for day in days.strftime('%Y-%m-%d').tolist():
+                rows.append({'date': day, 'start': start_time, 'end': '—', 'hours': hours_log})
+    except Exception as e:
+        return f'<div class="alert alert-danger">Preview error: {e}</div>'
+
+    return render_template('hours/_preview.html',
+                           rows=rows,
+                           task_label=task_label,
+                           task_number=task_number,
+                           target_user=target_user,
+                           category=category,
+                           company=company,
+                           note=note)
+
+
 @bp.route('/submit', methods=['POST'])
 @login_required
 def submit_action():

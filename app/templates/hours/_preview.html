@@ -1,0 +1,44 @@
+<div class="alert alert-info mb-3">
+  <strong>Review before submitting</strong><br>
+  <span class="small">
+    User: <strong>{{ target_user }}</strong> &middot;
+    Project: <strong>{{ task_label }}</strong> &middot;
+    Category: <strong>{{ category }}</strong> &middot;
+    Company: <strong>{{ company }}</strong>
+  </span>
+</div>
+
+<table class="table table-sm table-bordered">
+  <thead class="table-light">
+    <tr>
+      <th>Date</th>
+      <th>Start</th>
+      <th>End</th>
+      <th>Hours</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.date }}</td>
+      <td>{{ r.start }}</td>
+      <td>{{ r.end }}</td>
+      <td>{{ "%.2f"|format(r.hours) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot class="table-light">
+    <tr>
+      <td colspan="3"><strong>Total</strong></td>
+      <td><strong>{{ "%.2f"|format(rows|sum(attribute='hours')) }}</strong></td>
+    </tr>
+  </tfoot>
+</table>
+
+<p class="text-muted small">Note: <em>{{ note }}</em></p>
+
+<script>
+  document.getElementById('btn-submit').disabled = false;
+  document.getElementById('btn-submit').classList.remove('btn-secondary');
+  document.getElementById('btn-submit').classList.add('btn-success');
+</script>

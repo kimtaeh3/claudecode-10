@@ -5,9 +5,7 @@
 
 <div class="row">
   <div class="col-lg-7">
-    <form hx-post="{{ url_for('hours.submit_action') }}"
-          hx-target="#submit-result"
-          hx-indicator="#spinner">
+    <form id="hours-form" onsubmit="return false;">
 
       {% if is_admin %}
       <div class="mb-3">
@@ -21,7 +19,8 @@
                   hx-trigger="click"
                   hx-target="#project-select"
                   hx-include="#target_user"
-                  hx-indicator="#proj-spinner">
+                  hx-indicator="#proj-spinner"
+                  onclick="resetConfirm()">
             Refresh Projects
           </button>
         </div>
@@ -34,9 +33,11 @@
         <select name="task_number" id="project-select" class="form-select" required
                 hx-get="{{ url_for('hours.projects') }}"
                 hx-trigger="load"
-                hx-indicator="#proj-spinner">
+                hx-indicator="#proj-spinner"
+                onchange="document.getElementById('task_label').value = this.options[this.selectedIndex].text; resetConfirm()">
           <option disabled selected>Loading projects…</option>
         </select>
+        <input type="hidden" name="task_label" id="task_label" value="">
         <span id="proj-spinner" class="htmx-indicator text-muted small ms-1">
           <span class="spinner-border spinner-border-sm"></span> Fetching projects…
         </span>
@@ -148,7 +149,22 @@
       </div>
 
       <div class="d-flex align-items-center gap-3">
-        <button type="submit" class="btn btn-primary">Submit Hours</button>
+        <button type="button" id="btn-confirm" class="btn btn-primary"
+                hx-post="{{ url_for('hours.preview') }}"
+                hx-include="#hours-form"
+                hx-target="#submit-result"
+                hx-indicator="#spinner"
+                onclick="resetConfirm()">
+          Confirm
+        </button>
+        <button type="button" id="btn-submit" class="btn btn-secondary" disabled
+                hx-post="{{ url_for('hours.submit_action') }}"
+                hx-include="#hours-form"
+                hx-target="#submit-result"
+                hx-indicator="#spinner"
+                onclick="resetConfirm()">
+          Submit
+        </button>
         <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary"></span>
       </div>
     </form>
@@ -165,6 +181,7 @@ function toggleMode(mode) {
   document.getElementById('mode-hours').style.display = mode === 'hours' ? '' : 'none';
   const entry = document.querySelector('input[name="entry"]:checked')?.value || 'Multiple';
   toggleEntry(entry);
+  resetConfirm();
 }
 
 function toggleEntry(entry) {
@@ -175,8 +192,21 @@ function toggleEntry(entry) {
   document.querySelectorAll('.date-label').forEach(el => {
     el.textContent = single ? 'Date' : 'Start date';
   });
-  // For Single mode the backend uses start_date as the only day, so no end_date needed.
+  resetConfirm();
 }
+
+function resetConfirm() {
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.classList.remove('btn-success');
+  btn.classList.add('btn-secondary');
+  document.getElementById('submit-result').innerHTML = '';
+}
+
+// Prevent Enter from triggering anything
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') e.preventDefault();
+});
 
 // Apply initial state on load
 toggleEntry('Multiple');
