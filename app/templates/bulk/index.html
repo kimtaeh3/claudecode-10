@@ -10,11 +10,7 @@
         <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
         <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
 
-        <form id="parse-form"
-              hx-post="{{ url_for('bulk.parse') }}"
-              hx-target="#bulk-table"
-              hx-encoding="multipart/form-data"
-              hx-on::before-request="document.getElementById('bulk-table').innerHTML = ''">
+        <form id="parse-form">
 
           <!-- File picker -->
           <div class="mb-4">
@@ -76,10 +72,11 @@
         </div>
         <div id="parse-timer" class="text-secondary" style="font-size:.8rem;font-variant-numeric:tabular-nums">0s</div>
       </div>
-      <div class="d-flex justify-content-between align-items-baseline mb-2">
-        <div id="parse-status" class="text-muted" style="font-size:.82rem;min-height:1.3em"></div>
+      <div class="d-flex justify-content-between align-items-baseline mb-1">
+        <div id="parse-status" class="text-muted" style="font-size:.82rem;min-height:1.3em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:270px"></div>
         <div id="parse-pct" class="fw-bold text-primary ms-2" style="font-size:.82rem;min-width:2.8em;text-align:right">0%</div>
       </div>
+      <div id="parse-substatus" class="text-secondary mb-2" style="font-size:.75rem;min-height:1em"></div>
       <div class="progress" style="height:6px;border-radius:99px;background:#e9ecef">
         <div id="parse-progress-bar"
              class="progress-bar progress-bar-striped progress-bar-animated"
@@ -95,8 +92,7 @@
 function onFileChange(input) {
   const name = input.files[0]?.name || 'Choose .xlsx or .xlsb file…';
   document.getElementById('file-name').textContent = name;
-  const label = document.getElementById('file-label');
-  label.style.borderColor = input.files[0] ? '#0d6efd' : '';
+  document.getElementById('file-label').style.borderColor = input.files[0] ? '#0d6efd' : '';
 }
 
 function pickPreset(mode) {
@@ -111,22 +107,14 @@ function pickPreset(mode) {
 }
 
 (function () {
-  const STEPS = [
-    { pct:  5, msg: 'Reading Excel file…',                 delay:    0 },
-    { pct: 22, msg: 'Parsing rows and calculating dates…', delay:  350 },
-    { pct: 40, msg: 'Building week recommendations…',      delay: 1200 },
-    { pct: 55, msg: 'Connecting to Q360…',                 delay: 2200 },
-    { pct: 68, msg: 'Fetching project lists per employee…',delay: 4000 },
-    { pct: 80, msg: 'Matching projects to task rows…',     delay: 7000 },
-    { pct: 91, msg: 'Almost done — rendering table…',      delay:11000 },
-  ];
+  let timerInterval = null, startTime = 0;
 
-  let timers = [], timerInterval = null, startTime = 0;
-
-  function setProgress(pct, msg) {
+  function setProgress(pct, msg, sub) {
     document.getElementById('parse-progress-bar').style.width = pct + '%';
     document.getElementById('parse-pct').textContent = pct + '%';
     document.getElementById('parse-status').textContent = msg;
+    const subEl = document.getElementById('parse-substatus');
+    if (subEl) subEl.textContent = sub || '';
   }
 
   function tickTimer() {
@@ -140,23 +128,100 @@ function pickPreset(mode) {
     startTime = Date.now();
     document.getElementById('parse-overlay').style.display = 'flex';
     document.getElementById('parse-timer').textContent = '0s';
-    setProgress(0, '');
-    timers = STEPS.map(({ pct, msg, delay }) => setTimeout(() => setProgress(pct, msg), delay));
+    setProgress(5, 'Reading Excel file\u2026', '');
     timerInterval = setInterval(tickTimer, 500);
   }
 
   function stopProgress() {
-    timers.forEach(clearTimeout); timers = [];
     clearInterval(timerInterval);
     tickTimer();
-    setProgress(100, 'Done!');
-    setTimeout(() => { document.getElementById('parse-overlay').style.display = 'none'; }, 300);
+    setProgress(100, 'Done!', '');
+    setTimeout(() => { document.getElementById('parse-overlay').style.display = 'none'; }, 400);
   }
 
-  const form = document.getElementById('parse-form');
-  form.addEventListener('htmx:beforeRequest', startProgress);
-  form.addEventListener('htmx:afterRequest',  stopProgress);
-  form.addEventListener('htmx:responseError', stopProgress);
+  function injectHTML(html) {
+    const container = document.getElementById('bulk-table');
+    container.innerHTML = html;
+    // Re-execute inline scripts (innerHTML doesn't run them)
+    container.querySelectorAll('script').forEach(old => {
+      const s = document.createElement('script');
+      s.textContent = old.textContent;
+      old.parentNode.replaceChild(s, old);
+    });
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('parse-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    document.getElementById('bulk-table').innerHTML = '';
+    startProgress();
+
+    let resp;
+    try {
+      resp = await fetch('{{ url_for("bulk.parse") }}', {
+        method: 'POST',
+        body: new FormData(this),
+      });
+    } catch (err) {
+      stopProgress();
+      document.getElementById('bulk-table').innerHTML =
+        `<div class="alert alert-danger">Network error: ${err.message}</div>`;
+      return;
+    }
+
+    if (!resp.ok) {
+      stopProgress();
+      document.getElementById('bulk-table').innerHTML =
+        `<div class="alert alert-danger">Server error ${resp.status}</div>`;
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop(); // keep any incomplete trailing chunk
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          let data;
+          try { data = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (data.type === 'progress') {
+            // 10% base + up to 80% for Q360 fetching, leaving 10% for rendering
+            const fetchPct = data.total > 0
+              ? Math.round(10 + (data.done / data.total) * 80)
+              : 10;
+            const sub = data.total > 0
+              ? `${data.done} / ${data.total} users`
+              : '';
+            setProgress(fetchPct, data.user ? `Fetching \u2014 ${data.user}` : data.msg, sub);
+
+          } else if (data.type === 'complete') {
+            setProgress(95, 'Rendering table\u2026', '');
+            setTimeout(() => {
+              stopProgress();
+              injectHTML(data.html);
+            }, 200);
+
+          } else if (data.type === 'error') {
+            stopProgress();
+            injectHTML(data.html);
+          }
+        }
+      }
+    } catch (err) {
+      stopProgress();
+      document.getElementById('bulk-table').innerHTML =
+        `<div class="alert alert-danger">Stream error: ${err.message}</div>`;
+    }
+  });
 })();
 </script>
 

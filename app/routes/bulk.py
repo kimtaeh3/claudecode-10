@@ -356,7 +356,10 @@ def index():
 @bp.route('/parse', methods=['POST'])
 @login_required
 def parse():
+    import json as _json
     import traceback as _tb
+    from flask import Response, stream_with_context
+
     file = request.files.get('file')
     if not file:
         return '<div class="alert alert-danger">Please provide a file.</div>'
@@ -369,23 +372,63 @@ def parse():
     grouped = _filter_by_date(grouped, date_filter)
     if not grouped:
         return '<div class="alert alert-warning">No entries found for the selected date range.</div>'
-    try:
-        return _do_parse(grouped)
-    except Exception:
-        return (f'<div class="alert alert-danger"><strong>Unexpected error — please report:'
-                f'</strong><pre style="font-size:.75rem;white-space:pre-wrap">'
-                f'{_tb.format_exc()}</pre></div>')
+
+    def _evt(obj):
+        return f'data: {_json.dumps(obj)}\n\n'
+
+    def generate(grouped):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        try:
+            svc = _svc()
+        except Exception as e:
+            yield _evt({'type': 'error', 'html':
+                        f'<div class="alert alert-danger">Q360 login failed: {e}</div>'})
+            return
+
+        usernames = list({u['username'] for u in grouped})
+        total = len(usernames)
+        live_by_user = {}
+
+        yield _evt({'type': 'progress', 'done': 0, 'total': total,
+                    'user': '', 'msg': 'Connecting to Q360\u2026'})
+
+        def _fetch(username):
+            try:
+                return username, svc.get_projects(username)
+            except Exception:
+                return username, {}
+
+        with ThreadPoolExecutor(max_workers=min(total, 10)) as pool:
+            futures = {pool.submit(_fetch, un): un for un in usernames}
+            for f in as_completed(futures):
+                un, projects = f.result()
+                live_by_user[un] = projects
+                yield _evt({'type': 'progress', 'done': len(live_by_user),
+                            'total': total, 'user': un,
+                            'msg': f'Fetched projects for {un}'})
+
+        try:
+            html = _do_parse(grouped, live_by_user)
+            yield _evt({'type': 'complete', 'html': html})
+        except Exception:
+            err = _tb.format_exc()
+            yield _evt({'type': 'error', 'html':
+                        f'<div class="alert alert-danger"><strong>Unexpected error:</strong>'
+                        f'<pre style="font-size:.75rem;white-space:pre-wrap">{err}</pre></div>'})
+
+    return Response(
+        stream_with_context(generate(grouped)),
+        mimetype='text/event-stream',
+        headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
+    )
 
 
-def _do_parse(grouped):
+def _do_parse(grouped, live_by_user):
     import re as _re
     # Determine which day columns have any data
     active_days = [d for d in DAY_COLS if any(
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
     )]
-
-    # Fetch live Q360 projects per user and guess resq_zoom_key from Excel Project column.
-    # Wrapped in try/except so any API or matching failure falls back gracefully.
 
     def _match_score(excel_customer, excel_project, q360_desc):
         search = ' '.join(filter(None, [excel_customer, excel_project])).lower()
@@ -398,23 +441,6 @@ def _do_parse(grouped):
         return sum(1 for w in words if w in desc) / len(words)
 
     try:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        svc = _svc()
-        live_by_user = {}
-
-        def _fetch(username):
-            try:
-                return username, svc.get_projects(username)
-            except Exception:
-                return username, {}
-
-        usernames = list({u['username'] for u in grouped})
-        with ThreadPoolExecutor(max_workers=min(len(usernames), 10)) as pool:
-            futures = {pool.submit(_fetch, un): un for un in usernames}
-            for f in as_completed(futures):
-                un, projects = f.result()
-                live_by_user[un] = projects
-
         # Guess resq_zoom_key for each row by text-matching Excel Project → Q360 description
         for u in grouped:
             live = live_by_user.get(u['username'], {})
