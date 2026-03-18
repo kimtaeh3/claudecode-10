@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS forecast (
     rem          INTEGER NOT NULL DEFAULT 0
 );
 
+-- Username corrections: maps Excel-derived username → correct Q360 username
+CREATE TABLE IF NOT EXISTS username_map (
+    employee_name TEXT PRIMARY KEY,  -- Full name from Excel (e.g. "Asokan Gunanathan")
+    q360_username TEXT NOT NULL      -- Correct Q360 username (e.g. "AGUNANATHAN@CON")
+);
+
 -- Bulk upload default type config
 CREATE TABLE IF NOT EXISTS bulk_config (
     key      TEXT PRIMARY KEY,

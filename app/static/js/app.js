@@ -21,6 +21,7 @@ function setYear() {
 const overlay = document.getElementById('htmx-overlay');
 if (overlay) {
   document.body.addEventListener('htmx:beforeRequest', (e) => {
+    if (e.detail.elt.id === 'parse-form') return;
     if (e.detail.requestConfig.verb !== 'get' ||
         !e.detail.elt.id.includes('project-select')) {
       overlay.classList.add('active');

@@ -1,30 +1,163 @@
 {% extends "base.html" %}
 {% block title %}Bulk Upload{% endblock %}
 {% block content %}
-<h4 class="mb-4">Bulk Upload Hours</h4>
 
-<div class="row">
-  <div class="col-lg-6">
-    <form hx-post="{{ url_for('bulk.parse') }}"
-          hx-target="#bulk-table"
-          hx-indicator="#parse-spinner"
-          hx-encoding="multipart/form-data"
-          hx-on::before-request="document.getElementById('bulk-table').innerHTML = ''">
+<div class="row justify-content-center mt-3">
+  <div class="col-lg-5 col-md-7">
 
-      <div class="mb-3">
-        <label class="form-label">Excel File (.xlsx or .xlsb)</label>
-        <input type="file" name="file" class="form-control" accept=".xlsx,.xlsb" required>
+    <div class="card shadow-sm border-0" style="border-radius:12px;overflow:hidden">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
+        <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
+
+        <form id="parse-form"
+              hx-post="{{ url_for('bulk.parse') }}"
+              hx-target="#bulk-table"
+              hx-encoding="multipart/form-data"
+              hx-on::before-request="document.getElementById('bulk-table').innerHTML = ''">
+
+          <!-- File picker -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
+            <label id="file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
+                   style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
+              <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                   style="width:36px;height:36px">
+                <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
+              </div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div id="file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
+              </div>
+              <input type="file" name="file" accept=".xlsx,.xlsb" required
+                     class="d-none" id="file-input"
+                     onchange="onFileChange(this)">
+            </label>
+          </div>
+
+          <!-- Date range -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
+            <input type="hidden" name="date_filter" id="date-filter-input" value="month">
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="all"   onclick="pickPreset('all')">All</button>
+              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="week"  onclick="pickPreset('week')">This Week</button>
+              <button type="button" class="date-preset-btn btn btn-sm btn-primary border-0 px-3 active" data-preset="month" onclick="pickPreset('month')">This Month</button>
+              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="year"  onclick="pickPreset('year')">This Year</button>
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button type="submit" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
+            Parse File
+          </button>
+
+        </form>
       </div>
+    </div>
 
+  </div>
+</div>
 
-      <div class="d-flex align-items-center gap-3">
-        <button type="submit" class="btn btn-primary">Parse File</button>
-        <span id="parse-spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary"></span>
+<!-- Parse progress overlay -->
+<div id="parse-overlay" style="
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);
+  z-index:10000;
+  align-items:center;
+  justify-content:center;
+  backdrop-filter:blur(2px)">
+  <div class="card shadow-lg border-0" style="width:380px;border-radius:16px;overflow:hidden">
+    <div class="card-body p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status"></div>
+          <span class="fw-semibold">Processing File…</span>
+        </div>
+        <div id="parse-timer" class="text-secondary" style="font-size:.8rem;font-variant-numeric:tabular-nums">0s</div>
       </div>
-    </form>
+      <div class="d-flex justify-content-between align-items-baseline mb-2">
+        <div id="parse-status" class="text-muted" style="font-size:.82rem;min-height:1.3em"></div>
+        <div id="parse-pct" class="fw-bold text-primary ms-2" style="font-size:.82rem;min-width:2.8em;text-align:right">0%</div>
+      </div>
+      <div class="progress" style="height:6px;border-radius:99px;background:#e9ecef">
+        <div id="parse-progress-bar"
+             class="progress-bar progress-bar-striped progress-bar-animated"
+             style="width:0%;border-radius:99px;transition:width 0.6s ease"></div>
+      </div>
+    </div>
   </div>
 </div>
 
 <div id="bulk-table" class="mt-4"></div>
+
+<script>
+function onFileChange(input) {
+  const name = input.files[0]?.name || 'Choose .xlsx or .xlsb file…';
+  document.getElementById('file-name').textContent = name;
+  const label = document.getElementById('file-label');
+  label.style.borderColor = input.files[0] ? '#0d6efd' : '';
+}
+
+function pickPreset(mode) {
+  document.getElementById('date-filter-input').value = mode;
+  document.querySelectorAll('.date-preset-btn').forEach(b => {
+    const active = b.dataset.preset === mode;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('border-0', active);
+    b.classList.toggle('btn-light', !active);
+    b.classList.toggle('border', !active);
+  });
+}
+
+(function () {
+  const STEPS = [
+    { pct:  5, msg: 'Reading Excel file…',                 delay:    0 },
+    { pct: 22, msg: 'Parsing rows and calculating dates…', delay:  350 },
+    { pct: 40, msg: 'Building week recommendations…',      delay: 1200 },
+    { pct: 55, msg: 'Connecting to Q360…',                 delay: 2200 },
+    { pct: 68, msg: 'Fetching project lists per employee…',delay: 4000 },
+    { pct: 80, msg: 'Matching projects to task rows…',     delay: 7000 },
+    { pct: 91, msg: 'Almost done — rendering table…',      delay:11000 },
+  ];
+
+  let timers = [], timerInterval = null, startTime = 0;
+
+  function setProgress(pct, msg) {
+    document.getElementById('parse-progress-bar').style.width = pct + '%';
+    document.getElementById('parse-pct').textContent = pct + '%';
+    document.getElementById('parse-status').textContent = msg;
+  }
+
+  function tickTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const label = elapsed < 60 ? elapsed + 's'
+      : Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's';
+    document.getElementById('parse-timer').textContent = label;
+  }
+
+  function startProgress() {
+    startTime = Date.now();
+    document.getElementById('parse-overlay').style.display = 'flex';
+    document.getElementById('parse-timer').textContent = '0s';
+    setProgress(0, '');
+    timers = STEPS.map(({ pct, msg, delay }) => setTimeout(() => setProgress(pct, msg), delay));
+    timerInterval = setInterval(tickTimer, 500);
+  }
+
+  function stopProgress() {
+    timers.forEach(clearTimeout); timers = [];
+    clearInterval(timerInterval);
+    tickTimer();
+    setProgress(100, 'Done!');
+    setTimeout(() => { document.getElementById('parse-overlay').style.display = 'none'; }, 300);
+  }
+
+  const form = document.getElementById('parse-form');
+  form.addEventListener('htmx:beforeRequest', startProgress);
+  form.addEventListener('htmx:afterRequest',  stopProgress);
+  form.addEventListener('htmx:responseError', stopProgress);
+})();
+</script>
 
 {% endblock %}

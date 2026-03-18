@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, request, session
 
 from app.routes.auth import login_required
 from app.services.q360 import Q360Service, CATEGORIES, COMPANIES
+from app.db import get_db
 
 bp = Blueprint('bulk', __name__, url_prefix='/bulk')
 
@@ -190,6 +191,57 @@ def _fill_missing_weeks(task_rows):
     return new_rows
 
 
+def _apply_username_corrections(grouped):
+    """Replace Excel-derived usernames with saved Q360 corrections from the DB."""
+    rows = get_db().execute('SELECT employee_name, q360_username FROM username_map').fetchall()
+    corrections = {r['employee_name']: r['q360_username'] for r in rows}
+    if not corrections:
+        return grouped
+    for u in grouped:
+        corrected = corrections.get(u['employee'])
+        if corrected:
+            u['username'] = corrected
+            for r in u['rows']:
+                r['username'] = corrected
+    return grouped
+
+
+def _filter_by_date(grouped, mode):
+    """Filter grouped rows to only those whose week overlaps the selected date range.
+    A week overlaps a range when: week_monday <= range_end AND week_sunday >= range_start.
+    Full weeks are always kept intact even if they straddle a month/year boundary.
+    """
+    if mode == 'all':
+        return grouped
+    import calendar as _cal
+    today = datetime.today().date()
+
+    if mode == 'week':
+        range_start = today - timedelta(days=today.weekday())
+        range_end   = range_start + timedelta(days=6)
+    elif mode == 'month':
+        range_start = today.replace(day=1)
+        range_end   = today.replace(day=_cal.monthrange(today.year, today.month)[1])
+    elif mode == 'year':
+        range_start = today.replace(month=1, day=1)
+        range_end   = today.replace(month=12, day=31)
+    else:
+        return grouped
+
+    result = []
+    for u in grouped:
+        filtered = []
+        for r in u['rows']:
+            monday = _week_monday(r['week_num']).date()
+            sunday = monday + timedelta(days=6)
+            # Overlap: week touches the range at all
+            if monday <= range_end and sunday >= range_start:
+                filtered.append(r)
+        if filtered:
+            result.append({**u, 'rows': filtered})
+    return result
+
+
 def _parse_excel(file):
     """Parse uploaded Excel file. Returns list of user dicts, each with task rows."""
     filename = file.filename.lower()
@@ -222,10 +274,6 @@ def _parse_excel(file):
             continue
         week_num = int(float(week_val))
         week_start = _week_monday(week_num)
-
-        q360id = row.get('Q360ID')
-        has_q360 = q360id is not None and str(q360id) != 'nan' and str(q360id) != ''
-        q360id_str = str(int(float(q360id))) if has_q360 else ''
 
         def _clean(v):
             s = str(v or '').strip()
@@ -263,10 +311,10 @@ def _parse_excel(file):
             'employee': employee,
             'customer': customer,
             'project': project,
-            'q360id': q360id_str,
-            'needs_attention': not has_q360,
+            'q360id': '',
+            'needs_attention': True,
             'suggested': False,
-            'category': DEFAULT_CATEGORY if has_q360 else '',
+            'category': '',
             'company': DEFAULT_COMPANY,
             'comment': comment,
             'days': days,
@@ -308,13 +356,29 @@ def index():
 @bp.route('/parse', methods=['POST'])
 @login_required
 def parse():
+    import traceback as _tb
     file = request.files.get('file')
     if not file:
         return '<div class="alert alert-danger">Please provide a file.</div>'
+    date_filter = request.form.get('date_filter', 'month')
     try:
         grouped = _parse_excel(file)
     except Exception as e:
         return f'<div class="alert alert-danger">Failed to parse file: {e}</div>'
+    grouped = _apply_username_corrections(grouped)
+    grouped = _filter_by_date(grouped, date_filter)
+    if not grouped:
+        return '<div class="alert alert-warning">No entries found for the selected date range.</div>'
+    try:
+        return _do_parse(grouped)
+    except Exception:
+        return (f'<div class="alert alert-danger"><strong>Unexpected error — please report:'
+                f'</strong><pre style="font-size:.75rem;white-space:pre-wrap">'
+                f'{_tb.format_exc()}</pre></div>')
+
+
+def _do_parse(grouped):
+    import re as _re
     # Determine which day columns have any data
     active_days = [d for d in DAY_COLS if any(
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
@@ -322,7 +386,6 @@ def parse():
 
     # Fetch live Q360 projects per user and guess resq_zoom_key from Excel Project column.
     # Wrapped in try/except so any API or matching failure falls back gracefully.
-    import re as _re
 
     def _match_score(excel_customer, excel_project, q360_desc):
         search = ' '.join(filter(None, [excel_customer, excel_project])).lower()
@@ -407,10 +470,17 @@ def parse():
             user_projects[u['username']] = combos
 
     all_weeks = sorted(set(r['week_num'] for u in grouped for r in u['rows']))
+    week_mondays = {w: _week_monday(w).strftime('%Y-%m-%d') for w in all_weeks}
+    # Compute current Excel week number using the same logic as _week_monday
+    _today = datetime.today().date()
+    _year = _today.year
+    _week0 = datetime.fromisocalendar(_year - 1, 52, 1).date()
+    current_week_num = (_today - _week0).days // 7
     return render_template('bulk/_table.html', grouped=grouped, categories=CATEGORIES,
                            default_category=DEFAULT_CATEGORY, active_days=active_days,
                            user_projects=user_projects,
-                           all_weeks=all_weeks)
+                           all_weeks=all_weeks, week_mondays=week_mondays,
+                           current_week_num=current_week_num)
 
 
 @bp.route('/review', methods=['POST'])
@@ -590,3 +660,20 @@ def _do_submit(entries):
                                 'hours': hours, 'success': False, 'error': str(ex)})
 
     return render_template('bulk/_result.html', results=results)
+
+
+@bp.route('/save-username', methods=['POST'])
+@login_required
+def save_username():
+    employee_name = request.form.get('employee_name', '').strip()
+    q360_username = request.form.get('q360_username', '').strip()
+    if not employee_name or not q360_username:
+        return ('Missing fields', 400)
+    db = get_db()
+    db.execute(
+        'INSERT INTO username_map (employee_name, q360_username) VALUES (?, ?)'
+        ' ON CONFLICT(employee_name) DO UPDATE SET q360_username=excluded.q360_username',
+        (employee_name, q360_username)
+    )
+    db.commit()
+    return ('', 204)

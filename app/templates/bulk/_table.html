@@ -14,22 +14,90 @@
     </h5>
   </div>
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mt-1">
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
       <label class="form-label mb-0 small fw-semibold">Week:</label>
-      <select id="filter-week-min" class="form-select form-select-sm" style="width:auto" onchange="filterByWeek()">
+      <select id="filter-week-min" class="form-select form-select-sm" style="width:auto" onchange="onWeekSelectChange()">
         {% for w in all_weeks %}
-        <option value="{{ w }}" {% if loop.first %}selected{% endif %}>Wk {{ w }}</option>
+        <option value="{{ w }}">Wk {{ w }}</option>
         {% endfor %}
       </select>
       <span class="small">to</span>
-      <select id="filter-week-max" class="form-select form-select-sm" style="width:auto" onchange="filterByWeek()">
+      <select id="filter-week-max" class="form-select form-select-sm" style="width:auto" onchange="onWeekSelectChange()">
         {% for w in all_weeks %}
-        <option value="{{ w }}" {% if loop.last %}selected{% endif %}>Wk {{ w }}</option>
+        <option value="{{ w }}">Wk {{ w }}</option>
         {% endfor %}
       </select>
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showAllWeeks()">All</button>
+      <div class="btn-group btn-group-sm ms-1" role="group">
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="all"       onclick="setWeekPreset('all')">All</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="week"      onclick="setWeekPreset('week')">This Week</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn active" data-preset="month" onclick="setWeekPreset('month')">This Month</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="year"      onclick="setWeekPreset('year')">This Year</button>
+      </div>
     </div>
   </div>
+  <script>
+  window.WEEK_MONDAYS = {{ week_mondays | tojson }};
+  window.CURRENT_WEEK_NUM = {{ current_week_num }};
+
+  function setWeekPreset(mode) {
+    const allWeeks = Object.keys(WEEK_MONDAYS).map(Number).sort((a, b) => a - b);
+    const today = new Date();
+    const yr = today.getFullYear(), mo = today.getMonth();
+    let min, max;
+
+    if (mode === 'all') {
+      min = Math.min(...allWeeks);
+      max = Math.max(...allWeeks);
+
+    } else if (mode === 'week') {
+      // Use server-computed Excel week number — find it in data or fall back to nearest past week
+      let target = CURRENT_WEEK_NUM;
+      if (!WEEK_MONDAYS.hasOwnProperty(target)) {
+        const past = allWeeks.filter(w => w <= CURRENT_WEEK_NUM);
+        target = past.length ? Math.max(...past) : Math.min(...allWeeks);
+      }
+      min = max = target;
+
+    } else if (mode === 'month') {
+      // Overlap: week_monday <= last_of_month AND week_sunday >= first_of_month
+      const rangeStart = new Date(yr, mo, 1);
+      const rangeEnd   = new Date(yr, mo + 1, 0); // last day of month
+      const matching = allWeeks.filter(w => {
+        const mon = new Date(WEEK_MONDAYS[w] + 'T00:00:00');
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        return mon <= rangeEnd && sun >= rangeStart;
+      });
+      min = matching.length ? Math.min(...matching) : Math.min(...allWeeks);
+      max = matching.length ? Math.max(...matching) : Math.max(...allWeeks);
+
+    } else if (mode === 'year') {
+      // Overlap: week_monday <= Dec 31 AND week_sunday >= Jan 1
+      const rangeStart = new Date(yr, 0, 1);
+      const rangeEnd   = new Date(yr, 11, 31);
+      const matching = allWeeks.filter(w => {
+        const mon = new Date(WEEK_MONDAYS[w] + 'T00:00:00');
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        return mon <= rangeEnd && sun >= rangeStart;
+      });
+      min = matching.length ? Math.min(...matching) : Math.min(...allWeeks);
+      max = matching.length ? Math.max(...matching) : Math.max(...allWeeks);
+    }
+
+    document.getElementById('filter-week-min').value = min;
+    document.getElementById('filter-week-max').value = max;
+    document.querySelectorAll('.week-preset-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.preset === mode));
+    if (window.filterByWeek) window.filterByWeek();
+  }
+
+  function onWeekSelectChange() {
+    document.querySelectorAll('.week-preset-btn').forEach(b => b.classList.remove('active'));
+    if (window.filterByWeek) window.filterByWeek();
+  }
+
+  // Apply default "This Month" on load — defer so the IIFE below runs first
+  setTimeout(() => setWeekPreset('month'), 0);
+  </script>
 </div>
 
 <form id="bulk-submit-form"
@@ -76,7 +144,14 @@
       {% set has_missing  = user.rows | selectattr('missing_week') | list | length > 0 %}
       <tr class="table-dark" data-user-header="{{ user.username }}" style="position:sticky;top:var(--thead-h,34px);z-index:1">
         <td colspan="{{ 6 + active_days|length }}" class="fw-bold py-1 px-2" style="font-size:.85rem">
-          &#128100; {{ user.employee }} <span class="text-secondary fw-normal">({{ user.username }})</span>
+          &#128100; {{ user.employee }}
+          <span class="text-secondary fw-normal user-username-display-{{ loop.index }}">({{ user.username }})</span>
+          <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-secondary"
+                  style="font-size:.7rem;vertical-align:middle;text-decoration:none"
+                  title="Edit username"
+                  onclick='openEditUsernameModal({{ loop.index }}, {{ user.employee | tojson }}, {{ user.username | tojson }})'>
+            <i class="bi bi-pencil-square"></i>
+          </button>
           {% if has_guessed  %}<span class="ms-2 badge bg-info text-dark"  style="font-size:.65rem">⚡ guessed</span>{% endif %}
           {% if has_missing  %}<span class="ms-1 badge bg-danger"           style="font-size:.65rem">⚠ missing week</span>{% endif %}
         </td>
@@ -260,6 +335,29 @@
     <span id="validation-msg" class="text-danger small"></span>
   </div>
 </form>
+
+<!-- Edit Username Modal -->
+<div class="modal fade" id="editUsernameModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-semibold">Edit Q360 Username</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-1">
+        <p class="text-muted small mb-2" id="edit-username-employee-label"></p>
+        <input type="text" class="form-control form-control-sm" id="edit-username-input"
+               placeholder="Q360 username (e.g. JSMITH@CON)"
+               autocomplete="off"
+               onkeydown="if(event.key==='Enter')saveUsernameModal()">
+      </div>
+      <div class="modal-footer border-0 pt-0 gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveUsernameModal()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="bulk-result" class="mt-3"></div>
 
@@ -472,11 +570,7 @@ function filterByWeek() {
 }
 
 function showAllWeeks() {
-  const weeks = Array.from(document.querySelectorAll('#filter-week-min option')).map(o => parseInt(o.value));
-  if (!weeks.length) return;
-  document.getElementById('filter-week-min').value = Math.min(...weeks);
-  document.getElementById('filter-week-max').value = Math.max(...weeks);
-  filterByWeek();
+  setWeekPreset('all');
 }
 
 function deleteRow(btn) {
@@ -776,6 +870,52 @@ function applyProjectChoice(sel) {
   window.getDayForInput = getDayForInput;
   window.updateTallies  = updateTallies;
   window.validate       = validate;
+  window.filterByWeek   = filterByWeek;
 })();
+
+let _editUsernameIdx = null;
+let _editUsernameModal = null;
+
+function openEditUsernameModal(idx, employee, currentUsername) {
+  _editUsernameIdx = idx;
+  document.getElementById('edit-username-employee-label').textContent = employee;
+  const inp = document.getElementById('edit-username-input');
+  inp.value = currentUsername;
+  inp.classList.remove('is-invalid');
+  if (!_editUsernameModal) {
+    _editUsernameModal = new bootstrap.Modal(document.getElementById('editUsernameModal'));
+  }
+  _editUsernameModal.show();
+  // Focus input after modal animation
+  document.getElementById('editUsernameModal').addEventListener('shown.bs.modal', function focusOnce() {
+    inp.focus(); inp.select();
+    document.getElementById('editUsernameModal').removeEventListener('shown.bs.modal', focusOnce);
+  });
+}
+
+function saveUsernameModal() {
+  const inp = document.getElementById('edit-username-input');
+  const newUsername = inp.value.trim();
+  if (!newUsername) { inp.classList.add('is-invalid'); return; }
+
+  const employeeName = document.getElementById('edit-username-employee-label').textContent;
+  const fd = new FormData();
+  fd.append('employee_name', employeeName);
+  fd.append('q360_username', newUsername);
+
+  fetch('/bulk/save-username', { method: 'POST', body: fd })
+    .then(r => {
+      if (r.ok) {
+        // Update the username display in the table header
+        const display = document.querySelector('.user-username-display-' + _editUsernameIdx);
+        if (display) display.textContent = '(' + newUsername + ')';
+        _editUsernameModal.hide();
+      } else {
+        inp.classList.add('is-invalid');
+        alert('Failed to save username.');
+      }
+    })
+    .catch(() => alert('Network error saving username.'));
+}
 </script>
 {% endif %}

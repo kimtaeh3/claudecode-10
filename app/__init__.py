@@ -10,6 +10,15 @@ def create_app():
 
     db.init_app(app)
 
+    # Ensure username_map table exists (safe migration)
+    with app.app_context():
+        from app.db import get_db as _get_db
+        _get_db().execute(
+            'CREATE TABLE IF NOT EXISTS username_map '
+            '(employee_name TEXT PRIMARY KEY, q360_username TEXT NOT NULL)'
+        )
+        _get_db().commit()
+
     from app.routes import auth, hours, forecast, admin, bulk
     app.register_blueprint(auth.bp)
     app.register_blueprint(hours.bp)
