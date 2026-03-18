@@ -148,6 +148,8 @@ function pickPreset(mode) {
       s.textContent = old.textContent;
       old.parentNode.replaceChild(s, old);
     });
+    // Re-initialize HTMX on injected content so hx-post/hx-target work
+    if (window.htmx) htmx.process(container);
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
