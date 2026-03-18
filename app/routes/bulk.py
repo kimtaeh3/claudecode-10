@@ -398,13 +398,22 @@ def _do_parse(grouped):
         return sum(1 for w in words if w in desc) / len(words)
 
     try:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         svc = _svc()
         live_by_user = {}
-        for u in grouped:
+
+        def _fetch(username):
             try:
-                live_by_user[u['username']] = svc.get_projects(u['username'])
+                return username, svc.get_projects(username)
             except Exception:
-                live_by_user[u['username']] = {}
+                return username, {}
+
+        usernames = list({u['username'] for u in grouped})
+        with ThreadPoolExecutor(max_workers=min(len(usernames), 10)) as pool:
+            futures = {pool.submit(_fetch, un): un for un in usernames}
+            for f in as_completed(futures):
+                un, projects = f.result()
+                live_by_user[un] = projects
 
         # Guess resq_zoom_key for each row by text-matching Excel Project → Q360 description
         for u in grouped:
