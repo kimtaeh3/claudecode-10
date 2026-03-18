@@ -247,7 +247,9 @@ class Q360Service:
             'projectno': tb['projectno'], 'projectscheduleno': task_number,
             'prtid': '', 'rate': '', 'serviceconitemno': '', 'subcat': '',
             'timebilled': logtime, 'timebillno': timebill_no,
-            'userid': tb['assignee'],
+            # Use the explicit target uid so bulk-on-behalf-of submissions
+            # go to the right user, not to the project's default assignee.
+            'userid': uid,
             'user1': '', 'user2': '', 'user3': '', 'user4': '',
             'user5': '', 'user6': '', 'user7': '0',
             'user8': '0.0000', 'user9': '0.0000', 'user10': '',
@@ -255,14 +257,14 @@ class Q360Service:
             'companyname': tb['company'], 'company': tb['company'],
             'callno': '', 'problem': '', 'opportitle': '',
             'branch': tb['sitecity'], 'projecttitle': tb['projecttitle'],
-            'username': tb['assignee'], 'is_project_manager': 'n',
+            'username': uid, 'is_project_manager': 'n',
             'projecttasktitle': tb['description'], 'is_task_contact': 'y',
             'team_member': '', 'editaction': 'edit',
             'canmodify': 'y', 'candelete': 'y',
             'funnelopporno': '', 'qtyprodactual': '0',
             'qtyprodbudget': '0', 'qtyprodunit': '',
             'parentprojectscheduleno': parent_project_no,
-            'loaddate': loaddate, 'currentuser': tb['assignee'],
+            'loaddate': loaddate, 'currentuser': uid,
         }
         save_data = {
             '_a': 'timebill_save', '_hash': 'tab_timebill', '_pversion': 'd101',
@@ -271,10 +273,20 @@ class Q360Service:
             'jsonRequest': json.dumps(json_payload),
             'timebillno': timebill_no,
         }
-        self.session.post(AJAX_URL,
-                          headers={'Content-Type': 'application/x-www-form-urlencoded'},
-                          data=urlencode(save_data, quote_via=quote_plus),
-                          cookies=cookies, verify=False)
+        r7 = self.session.post(AJAX_URL,
+                               headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                               data=urlencode(save_data, quote_via=quote_plus),
+                               cookies=cookies, verify=False, timeout=25)
+        # Surface Q360-level errors (response body may contain error details)
+        try:
+            resp_data = json.loads(r7.text)
+            if isinstance(resp_data, dict):
+                err = resp_data.get('error') or resp_data.get('message') or resp_data.get('msg')
+                status = resp_data.get('status', '')
+                if err or (status and str(status).lower() not in ('ok', 'success', '1', 'true', '')):
+                    raise RuntimeError(f"Q360 rejected timebill: {err or resp_data}")
+        except (json.JSONDecodeError, AttributeError):
+            pass  # non-JSON response is not necessarily an error
         return {'status': 'ok', 'timebillno': timebill_no}
 
     # ------------------------------------------------------------------ #
