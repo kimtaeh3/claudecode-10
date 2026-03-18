@@ -4,9 +4,12 @@ Credentials are passed explicitly; no Flask session dependency.
 """
 
 import json
+import urllib3
 from datetime import datetime, timedelta
 from itertools import groupby
 from urllib.parse import urlencode, quote_plus, unquote
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 import requests
 
