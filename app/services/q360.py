@@ -147,7 +147,7 @@ class Q360Service:
             'Referer': f'{BASE_URL}/controller.php?action=mytasklist',
         }
         r = self.session.post(AJAX_URL, headers=headers, data=payload,
-                              cookies={'cookies_are': 'working'}, verify=False)
+                              cookies={'cookies_are': 'working'}, verify=False, timeout=25)
         data = json.loads(r.text)['data']
         return {item['resq_zoom_key']: item for item in data}
 
