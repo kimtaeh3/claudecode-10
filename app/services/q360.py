@@ -289,7 +289,9 @@ class Q360Service:
             'timebillno': timebill_no,
         }
         import sys
-        print(f"\n[Q360 timebill_save] user={uid} task={task_number} timebillno={timebill_no}", flush=True)
+        _source = 'bulk' if task_data else 'submit_hours'
+        print(f"\n[Q360 timebill_save] source={_source} user={uid} task={task_number} timebillno={timebill_no}",
+              file=sys.stderr, flush=True)
         print(f"  payload: {json.dumps(json_payload, indent=2)}", file=sys.stderr, flush=True)
         r7 = self.session.post(AJAX_URL,
                                headers={'Content-Type': 'application/x-www-form-urlencoded'},
