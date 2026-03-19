@@ -756,7 +756,6 @@ def _submit_stream(entries):
                     e['q360id'], s, e_str, logtime, e.get('comment') or None,
                     e.get('company', 'CONNEX TELECOMMUNICATIONS INC.'),
                     e['username'], e['category'],
-                    task_data=e.get('q360_meta') or None,
                 )
                 results.append({'employee': e.get('username', ''), 'day': d['day'],
                                 'hours': hours, 'success': True, 'error': None})

@@ -115,7 +115,7 @@
         <th style="width:90px">Week</th>
         <th>Employee</th>
         <th>Project</th>
-        <th style="width:110px">Task #</th>
+        <th style="width:110px;display:none">Task #</th>
         <th style="width:160px">Category</th>
         {% for day in active_days %}
         <th class="text-center" style="width:65px">{{ day }}</th>
@@ -235,29 +235,10 @@
           {% if row.project_guessed %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
         </td>
 
-        {# Q360 ID column #}
-        <td class="{% if row.suggested %}bg-info bg-opacity-25{% endif %}">
-          {% if not row.needs_attention %}
-            <input type="text" class="form-control form-control-sm q360id-field"
-                   data-row="{{ rid }}" value="{{ row.q360id }}"
-                   {% if row.suggested %}title="⚡ Guessed — please verify"{% endif %}>
-            {% if row.suggested %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
-          {% elif row.recommended_q360ids | length == 1 %}
-            <input type="text" class="form-control form-control-sm q360id-field"
-                   data-row="{{ rid }}" value="{{ row.recommended_q360ids[0] }}"
-                   title="⚡ Suggested from previous week">
-            <div class="text-info" style="font-size:.65rem">⚡ suggested</div>
-          {% elif row.recommended_q360ids | length > 1 %}
-            <select class="form-select form-select-sm q360id-field" data-row="{{ rid }}">
-              <option value="">— pick —</option>
-              {% for qid in row.recommended_q360ids %}
-              <option value="{{ qid }}">{{ qid }}</option>
-              {% endfor %}
-            </select>
-          {% else %}
-            <input type="text" class="form-control form-control-sm q360id-field"
-                   data-row="{{ rid }}" value="" placeholder="enter ID">
-          {% endif %}
+        {# Q360 ID (hidden — task ID is fetched live from Q360 at submission time) #}
+        <td style="display:none">
+          <input type="hidden" class="q360id-field" data-row="{{ rid }}"
+                 value="{{ row.q360id if not row.needs_attention else (row.recommended_q360ids[0] if row.recommended_q360ids | length >= 1 else '') }}">
         </td>
 
         {# Category column #}
@@ -647,7 +628,7 @@ async function _addRowImpl(username, employee, weekNum, insertBeforeEl) {
       </select>
       <input type="text" class="form-control form-control-sm mt-1 new-proj-custom" placeholder="Project" style="display:none">
     </td>
-    <td><input type="text" class="form-control form-control-sm q360id-field" data-row="${rid}" value=""></td>
+    <td style="display:none"><input type="hidden" class="q360id-field" data-row="${rid}" value=""></td>
     <td><select class="form-select form-select-sm category-field" data-row="${rid}">${catOpts}</select></td>
     ${dayCells}
     <td>
@@ -821,19 +802,6 @@ function applyProjectChoice(sel) {
       if (days.length === 0) return;
       const projSel = tr.querySelector('.project-field');
       const projLabel = projSel ? (projSel.options[projSel.selectedIndex]?.text || '').trim() : '';
-      // Find pre-fetched Q360 metadata so submit doesn't need to re-fetch projects
-      const userCombos = (window.USER_PROJECTS || {})[tr.dataset.username] || [];
-      const combo = userCombos.find(p => p.q360id === q360id) || {};
-      const q360Meta = q360id ? {
-        customerno:   combo.q360_customerno   || '',
-        description:  combo.q360_description  || '',
-        invoiceno:    combo.q360_invoiceno     || '',
-        opporno:      combo.q360_opporno       || '',
-        projectno:    combo.q360_projectno     || '',
-        company:      combo.q360_company       || '',
-        sitecity:     combo.q360_sitecity      || '',
-        projecttitle: combo.q360_projecttitle  || '',
-      } : null;
       rows.push({
         row_num: tr.dataset.rownum,
         username: tr.dataset.username,
@@ -843,7 +811,6 @@ function applyProjectChoice(sel) {
         needs_attention: !q360id,
         company: 'CONNEX TELECOMMUNICATIONS INC.',
         comment: '',
-        q360_meta: q360Meta,
         days,
       });
     });
