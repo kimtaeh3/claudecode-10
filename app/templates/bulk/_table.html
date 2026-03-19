@@ -291,9 +291,13 @@
         {% endfor %}
 
         <td>
-          <div class="d-flex align-items-center justify-content-center gap-1">
-            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
-                    style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, -0.5)">−</button>
+          <div class="d-flex flex-column align-items-center gap-1">
+            <div class="btn-group btn-group-sm">
+              <button type="button" class="btn btn-outline-secondary py-0 px-1"
+                      style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, -0.5)">−</button>
+              <button type="button" class="btn btn-outline-secondary py-0 px-1"
+                      style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, 0.5)">+</button>
+            </div>
             {% if row.missing_week %}
               <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
             {% elif row.needs_attention %}
@@ -301,8 +305,6 @@
             {% else %}
               <span class="badge bg-success" data-row-status="{{ rid }}">OK</span>
             {% endif %}
-            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
-                    style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, 0.5)">+</button>
           </div>
         </td>
       </tr>
