@@ -263,14 +263,19 @@
         {% endfor %}
 
         <td>
-          {% if row.missing_week %}
-            <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
-            <div style="font-size:.6rem;color:#888">from Wk {{ row.missing_guessed_from }}</div>
-          {% elif row.needs_attention %}
-            <span class="badge bg-warning text-dark">⚠ No Project Selected</span>
-          {% else %}
-            <span class="badge bg-success" data-row-status="{{ rid }}">OK</span>
-          {% endif %}
+          <div class="d-flex align-items-center justify-content-center gap-1">
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, -0.5)">−</button>
+            {% if row.missing_week %}
+              <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
+            {% elif row.needs_attention %}
+              <span class="badge bg-warning text-dark">⚠ No Project</span>
+            {% else %}
+              <span class="badge bg-success" data-row-status="{{ rid }}">OK</span>
+            {% endif %}
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1"
+                    style="font-size:.75rem;line-height:1.4" onclick="adjustRowHours(this, 0.5)">+</button>
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -336,6 +341,16 @@ window.USER_PROJECTS = {{ user_projects | tojson }};
 
 function getProjectRows() {
   return Array.from(document.querySelectorAll('tr[data-rownum]'));
+}
+
+function adjustRowHours(btn, delta) {
+  const tr = btn.closest('tr');
+  tr.querySelectorAll('.hours-field').forEach(inp => {
+    const current = parseFloat(inp.value) || 0;
+    const next = Math.round((current + delta) * 2) / 2; // snap to 0.5
+    if (next >= 0 && next <= 24) inp.value = next;
+  });
+  updateTallies(); validate();
 }
 
 function onProjectChange(sel) {
