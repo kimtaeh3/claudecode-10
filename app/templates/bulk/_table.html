@@ -114,7 +114,7 @@
         <th style="width:90px">Week</th>
         <th>Employee</th>
         <th>Project</th>
-        <th style="width:110px;display:none">Task #</th>
+        <th style="width:110px">Task #</th>
         <th>Category</th>
         {% for day in active_days %}
         <th class="text-center" style="width:65px">{{ day }}</th>
@@ -222,14 +222,15 @@
               {% if sel %}{% set ns2.matched = true %}{% endif %}
               <option value="{{ loop.index0 }}"
                       data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
-                      {% if sel %}selected{% endif %}>{{ lbl[:65] }}{% if lbl|length > 65 %}…{% endif %}</option>
+                      {% if sel %}selected{% endif %}>{{ lbl }}</option>
             {% endfor %}
             {# No __current__ fallback — live Q360 projects are always used #}
           </select>
         </td>
 
-        {# Q360 ID (hidden — task ID is fetched live from Q360 at submission time) #}
-        <td style="display:none">
+        {# Task # — read-only, auto-set by project dropdown #}
+        <td class="small text-muted text-center">
+          <span class="q360id-display">{{ row.q360id }}</span>
           <input type="hidden" class="q360id-field" data-row="{{ rid }}" value="{{ row.q360id }}">
         </td>
 
@@ -342,8 +343,10 @@ function onProjectChange(sel) {
   if (!opt || !opt.dataset.q360) return;
   const tr = sel.closest('tr');
   const q360 = tr.querySelector('.q360id-field');
+  const display = tr.querySelector('.q360id-display');
   const cat  = tr.querySelector('.category-field');
   if (q360 && opt.dataset.q360) q360.value = opt.dataset.q360;
+  if (display) display.textContent = opt.dataset.q360 || '';
   if (cat  && opt.dataset.cat)  cat.value  = opt.dataset.cat;
   updateTallies(); validate();
 }
@@ -616,7 +619,7 @@ async function _addRowImpl(username, employee, weekNum, insertBeforeEl) {
       </select>
       <input type="text" class="form-control form-control-sm mt-1 new-proj-custom" placeholder="Project" style="display:none">
     </td>
-    <td style="display:none"><input type="hidden" class="q360id-field" data-row="${rid}" value=""></td>
+    <td class="small text-muted text-center"><span class="q360id-display"></span><input type="hidden" class="q360id-field" data-row="${rid}" value=""></td>
     <td><select class="form-select form-select-sm category-field" data-row="${rid}">${catOpts}</select></td>
     ${dayCells}
     <td>
@@ -670,8 +673,9 @@ function applyProjectChoice(sel) {
   if (val === '') return;
   const q360Field = tr.querySelector('.q360id-field');
   if (!q360Field) return;
-  // Live project: option value IS the Q360 task number
   q360Field.value = val;
+  const display = tr.querySelector('.q360id-display');
+  if (display) display.textContent = val;
 }
 
 (function() {
