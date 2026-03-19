@@ -7,7 +7,6 @@
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
     <h5 class="mb-0">Review Entries
       <span id="legend-all"       class="ms-2 badge bg-secondary"         style="font-size:.75rem;cursor:pointer" title="Show all" onclick="toggleTypeFilter(null)">All</span>
-      <span id="legend-guessed"   class="ms-1 badge bg-info text-dark"    style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('suggested')">⚡ guessed</span>
       <span id="legend-attention" class="ms-1 badge bg-warning text-dark" style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('attention')">⚠ needs Q360 ID</span>
       <span id="legend-missing"    class="ms-1 badge bg-danger"            style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('missing')">⚠ missing week (guessed)</span>
       <span id="legend-incomplete" class="ms-1 badge bg-danger"            style="font-size:.75rem;cursor:pointer" title="Click to filter" onclick="toggleTypeFilter('incomplete')">⚠ &lt; 40h</span>
@@ -116,7 +115,7 @@
         <th>Employee</th>
         <th>Project</th>
         <th style="width:110px;display:none">Task #</th>
-        <th style="width:160px">Category</th>
+        <th>Category</th>
         {% for day in active_days %}
         <th class="text-center" style="width:65px">{{ day }}</th>
         {% endfor %}
@@ -140,7 +139,6 @@
     <tbody>
     {% for user in grouped %}
       {# ── User name header row ── #}
-      {% set has_guessed  = user.rows | selectattr('suggested')    | list | length > 0 %}
       {% set has_missing  = user.rows | selectattr('missing_week') | list | length > 0 %}
       <tr class="table-dark" data-user-header="{{ user.username }}" style="position:sticky;top:var(--thead-h,34px);z-index:1">
         <td colspan="{{ 6 + active_days|length }}" class="fw-bold py-1 px-2" style="font-size:.85rem">
@@ -152,14 +150,11 @@
                   onclick='openEditUsernameModal({{ loop.index }}, {{ user.employee | tojson }}, {{ user.username | tojson }})'>
             <i class="bi bi-pencil-square"></i>
           </button>
-          {% if has_guessed  %}<span class="ms-2 badge bg-info text-dark"  style="font-size:.65rem">⚡ guessed</span>{% endif %}
           {% if has_missing  %}<span class="ms-1 badge bg-danger"           style="font-size:.65rem">⚠ missing week</span>{% endif %}
         </td>
         <td class="text-end pe-2" style="white-space:nowrap;vertical-align:middle">
           {% set has_errors = user.rows | selectattr('missing_week') | list | length > 0
-                           or user.rows | selectattr('needs_attention') | list | length > 0
-                           or user.rows | selectattr('suggested') | list | length > 0
-                           or user.rows | selectattr('project_guessed') | list | length > 0 %}
+                           or user.rows | selectattr('needs_attention') | list | length > 0 %}
           <span class="commit-cb-wrap me-2" style="{% if not has_errors %}display:none{% endif %}">
             <label class="form-check-label small text-warning me-1" style="font-size:.75rem;cursor:pointer"
                    for="commit-{{ user.username }}">commit</label>
