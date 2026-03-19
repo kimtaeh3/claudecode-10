@@ -174,10 +174,7 @@ class Q360Service:
         }
 
         if task_data:
-            # Use pre-fetched project metadata — avoids a session-scoped re-fetch
-            # that would return the admin's projects instead of the target user's.
             tb = task_data
-            parent_project_no = ''
             project_category = category or ''
         else:
             # Fetch projects list (used by regular single-user Submit Hours)
@@ -190,31 +187,37 @@ class Q360Service:
             r4 = self.session.post(AJAX_URL, headers=headers, data=projects_payload,
                                    cookies=cookies, verify=False)
             projects = {item['resq_zoom_key']: item for item in json.loads(r4.text)['data']}
-
-            # Open task to get category and parent project
-            open_payload = (
-                f'_a=pageload&_navkey=1646064679867&_pversion=d101'
-                f'&_referrer=action%3Dtask%26projectscheduleno%3D{task_number}%26_navkey%3D1646064679867'
-                f'&_type=data&action=task&projectscheduleno={task_number}'
-            )
-            r5 = self.session.post(AJAX_URL, headers=headers, data=open_payload,
-                                   cookies=cookies, verify=False)
-            temp = json.loads(r5.text)
+            tb = projects[task_number]
 
             try:
-                parent_project_no = temp['data']['data']['recordSet']['task']['data'][0]['parentprojectscheduleno']
-            except (KeyError, IndexError):
-                parent_project_no = ''
-
-            try:
-                project_category = temp['data']['data']['recordSet']['task']['data'][0]['timebillcategory']
-            except (KeyError, IndexError):
+                project_category = tb.get('timebillcategory', '')
+            except Exception:
                 project_category = ''
-
             if category:
                 project_category = category
 
-            tb = projects[task_number]
+        # Always fetch parent project number from the task page — required for
+        # the Project field to populate correctly in Q360's Timebill Post Q view.
+        open_payload = (
+            f'_a=pageload&_navkey=1646064679867&_pversion=d101'
+            f'&_referrer=action%3Dtask%26projectscheduleno%3D{task_number}%26_navkey%3D1646064679867'
+            f'&_type=data&action=task&projectscheduleno={task_number}'
+        )
+        r5 = self.session.post(AJAX_URL, headers=headers, data=open_payload,
+                               cookies=cookies, verify=False)
+        try:
+            temp = json.loads(r5.text)
+            parent_project_no = temp['data']['data']['recordSet']['task']['data'][0]['parentprojectscheduleno']
+        except (KeyError, IndexError, ValueError):
+            parent_project_no = ''
+
+        if not task_data:
+            try:
+                cat_from_task = temp['data']['data']['recordSet']['task']['data'][0]['timebillcategory']
+                if not project_category:
+                    project_category = cat_from_task
+            except (KeyError, IndexError):
+                pass
 
         # Create timebill
         now = datetime.today()
