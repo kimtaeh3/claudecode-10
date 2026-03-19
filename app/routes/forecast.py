@@ -284,10 +284,8 @@ def index():
         total_bill = sum(w['billable'] for w in wdata.values())
         total_nonbill = sum(w['nonbillable'] for w in wdata.values())
         weeks_worked = len(wdata)
-        # Available hours = workdays in the span of user's actual data, not full filter range
-        u_start = user_min_date.get(username, start)
-        u_end = user_max_date.get(username, end)
-        user_avail = _available_hours(u_start, u_end, holidays)
+        # Available hours = filter-range available work hours (matches Avail Hrs row)
+        user_avail = total_avail
         util_pct = (total_bill / user_avail * 100) if user_avail > 0 else 0
         avg_per_week = (total_all / weeks_worked) if weeks_worked > 0 else 0
         # Per-category and per-category-project totals across all weeks
