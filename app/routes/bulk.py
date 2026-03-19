@@ -751,7 +751,7 @@ def _submit_stream(entries):
                 s = f"{date_str}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
                 e_str = f"{date_str}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
                 delta = ed - sd
-                logtime = f"{str(delta)[:-6]}.{str(delta)[-5:-3]}"
+                logtime = f"{delta.total_seconds() / 3600:.2f}"
                 svc.submit_hours(
                     e['q360id'], s, e_str, logtime, e.get('comment') or None,
                     e.get('company', 'CONNEX TELECOMMUNICATIONS INC.'),

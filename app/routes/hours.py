@@ -206,7 +206,7 @@ def _submit_action_stream():
                 sd = datetime.strptime(f"{day} {start_time}", '%Y-%m-%d %H:%M')
                 ed = datetime.strptime(f"{day} {end_time}",   '%Y-%m-%d %H:%M')
                 delta = ed - sd
-                log = f"{str(delta)[:-6]}.{str(delta)[-5:-3]}"
+                log = f"{delta.total_seconds() / 3600:.2f}"
                 svc.submit_hours(task_number, s, e, log, note, company, target_user, category)
                 submitted += 1
                 yield _evt({'type': 'progress', 'done': submitted, 'total': total,
