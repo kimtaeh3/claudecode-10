@@ -138,87 +138,111 @@ def preview():
 @bp.route('/submit', methods=['POST'])
 @login_required
 def submit_action():
+    from flask import Response, stream_with_context
+    return Response(
+        stream_with_context(_submit_action_stream()),
+        mimetype='text/event-stream',
+        headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
+    )
+
+
+def _submit_action_stream():
+    import json as _json
+    import traceback
+
+    def _evt(obj):
+        return f'data: {_json.dumps(obj)}\n\n'
+
     f = request.form
     task_number = f.get('task_number', '')
-    entry = f.get('entry', 'Single')
-    mode = f.get('mode', 'time')  # 'time' or 'hours'
-    note = f.get('note') or None
-    company = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
+    entry       = f.get('entry', 'Single')
+    mode        = f.get('mode', 'time')
+    note        = f.get('note') or None
+    company     = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
     include_weekends = f.get('weekends') == 'on'
     target_user = f.get('target_user') or None
-    category = f.get('category') or None
+    category    = f.get('category') or None
 
     svc = _svc()
     submitted = 0
     errors = []
+    day_list = []
 
     try:
-        import traceback
         if mode == 'time':
             start_date = f['start_date']
             start_time = f['start_time']
-            end_date = f['end_date']
-            end_time = f['end_time']
+            end_date   = f['end_date']
+            end_time   = f['end_time']
+            days = (pandas.date_range(start_date, end_date) if include_weekends
+                    else pandas.bdate_range(start_date, end_date, freq='B')) \
+                   if entry == 'Multiple' else [start_date]
+            day_list = list(days.strftime('%Y-%m-%d').tolist() if hasattr(days, 'strftime') else days)
+        else:
+            start_date = f['start_date']
+            end_date   = f['end_date']
+            start_time = f['start_time']
+            hours_log  = int(f.get('hours_log', 0))
+            days = (pandas.date_range(start_date, end_date) if include_weekends
+                    else pandas.bdate_range(start_date, end_date, freq='B')) \
+                   if entry == 'Multiple' else [start_date]
+            day_list = list(days.strftime('%Y-%m-%d').tolist() if hasattr(days, 'strftime') else days)
+    except Exception as ex:
+        yield _evt({'type': 'error', 'html':
+                    f'<div class="alert alert-danger">Input error: {ex}</div>'})
+        return
 
-            if entry == 'Multiple':
-                days = (pandas.date_range(start_date, end_date)
-                        if include_weekends
-                        else pandas.bdate_range(start_date, end_date, freq='B'))
-                day_list = days.strftime('%Y-%m-%d').tolist()
-            else:
-                day_list = [start_date]
+    splits_per_day = 2 if (mode == 'hours' and hours_log > 4) else 1
+    total = len(day_list) * splits_per_day
+    yield _evt({'type': 'progress', 'done': 0, 'total': total,
+                'msg': f'Submitting {total} entr\u00edy\u2026' if total == 1
+                       else f'Submitting {total} entries\u2026'})
 
-            for day in day_list:
-                s = f"{day}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
-                e = f"{day}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
+    try:
+        for day in day_list:
+            if mode == 'time':
+                s  = f"{day}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
+                e  = f"{day}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
                 sd = datetime.strptime(f"{day} {start_time}", '%Y-%m-%d %H:%M')
-                ed = datetime.strptime(f"{day} {end_time}", '%Y-%m-%d %H:%M')
+                ed = datetime.strptime(f"{day} {end_time}",   '%Y-%m-%d %H:%M')
                 delta = ed - sd
                 log = f"{str(delta)[:-6]}.{str(delta)[-5:-3]}"
                 svc.submit_hours(task_number, s, e, log, note, company, target_user, category)
                 submitted += 1
-
-        else:  # hours mode
-            start_date = f['start_date']
-            end_date = f['end_date']
-            start_time = f['start_time']
-            hours_log = int(f.get('hours_log', 0))
-
-            if entry == 'Multiple':
-                days = (pandas.date_range(start_date, end_date)
-                        if include_weekends
-                        else pandas.bdate_range(start_date, end_date, freq='B'))
-                day_list = days.strftime('%Y-%m-%d').tolist()
+                yield _evt({'type': 'progress', 'done': submitted, 'total': total,
+                            'msg': f'Submitted \u2014 {day}'})
             else:
-                day_list = [start_date]
-
-            for day in day_list:
                 end_h1 = str(int(start_time[:2]) + min(hours_log, 4))
                 end_t1 = f"{end_h1}:{start_time[3:5]}"
-                s1 = f"{day}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
-                e1 = f"{day}%20{end_h1.zfill(2)}%3A{start_time[3:5]}%3A00.000"
+                s1  = f"{day}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
+                e1  = f"{day}%20{end_h1.zfill(2)}%3A{start_time[3:5]}%3A00.000"
                 sd1 = datetime.strptime(f"{day} {start_time}", '%Y-%m-%d %H:%M')
-                ed1 = datetime.strptime(f"{day} {end_t1}", '%Y-%m-%d %H:%M')
+                ed1 = datetime.strptime(f"{day} {end_t1}",     '%Y-%m-%d %H:%M')
                 log1 = str(ed1 - sd1)[:-6] + '.' + str(ed1 - sd1)[-5:-3]
                 svc.submit_hours(task_number, s1, e1, log1, note, company, target_user, category)
                 submitted += 1
+                yield _evt({'type': 'progress', 'done': submitted, 'total': total,
+                            'msg': f'Submitted \u2014 {day}'})
 
                 if hours_log > 4:
                     sh2 = str(int(start_time[:2]) + 5)
                     eh2 = str(int(start_time[:2]) + hours_log + 1)
                     et2 = f"{eh2}:{start_time[3:5]}"
-                    s2 = f"{day}%20{sh2}%3A{start_time[3:5]}%3A00.000"
-                    e2 = f"{day}%20{eh2.zfill(2)}%3A{start_time[3:5]}%3A00.000"
+                    s2  = f"{day}%20{sh2}%3A{start_time[3:5]}%3A00.000"
+                    e2  = f"{day}%20{eh2.zfill(2)}%3A{start_time[3:5]}%3A00.000"
                     sd2 = datetime.strptime(f"{day} {sh2}:{start_time[3:5]}", '%Y-%m-%d %H:%M')
-                    ed2 = datetime.strptime(f"{day} {et2}", '%Y-%m-%d %H:%M')
+                    ed2 = datetime.strptime(f"{day} {et2}",                   '%Y-%m-%d %H:%M')
                     log2 = str(ed2 - sd2)[:-6] + '.' + str(ed2 - sd2)[-5:-3]
                     svc.submit_hours(task_number, s2, e2, log2, note, company, target_user, category)
                     submitted += 1
-
-    except Exception as ex:
+                    yield _evt({'type': 'progress', 'done': submitted, 'total': total,
+                                'msg': f'Submitted \u2014 {day} (split 2)'})
+    except Exception:
         errors.append(traceback.format_exc())
 
     try:
-        return render_template('hours/_submit_result.html', submitted=submitted, errors=errors)
+        html = render_template('hours/_submit_result.html', submitted=submitted, errors=errors)
+        yield _evt({'type': 'complete', 'html': html})
     except Exception as ex:
-        return f'<div class="alert alert-danger">Render error: {ex}</div>'
+        yield _evt({'type': 'error', 'html':
+                    f'<div class="alert alert-danger">Render error: {ex}</div>'})

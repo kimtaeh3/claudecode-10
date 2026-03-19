@@ -157,16 +157,44 @@
           Confirm
         </button>
         <button type="button" id="btn-submit" class="btn btn-secondary" disabled
-                hx-post="{{ url_for('hours.submit_action') }}"
-                hx-include="#hours-form"
-                hx-target="#submit-result"
-                hx-indicator="#spinner"
-                onclick="resetConfirm()">
+                onclick="doSubmit()">
           Submit
         </button>
         <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary"></span>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Submit overlay -->
+<div id="hours-submit-overlay" style="
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);
+  z-index:10000;
+  align-items:center;
+  justify-content:center;
+  backdrop-filter:blur(2px)">
+  <div class="card shadow-lg border-0" style="width:380px;border-radius:16px;overflow:hidden">
+    <div class="card-body p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status"></div>
+          <span class="fw-semibold">Submitting Hours&hellip;</span>
+        </div>
+        <div id="hours-submit-timer" class="text-secondary" style="font-size:.8rem;font-variant-numeric:tabular-nums">0s</div>
+      </div>
+      <div class="d-flex justify-content-between align-items-baseline mb-1">
+        <div id="hours-submit-status" class="text-muted" style="font-size:.82rem;min-height:1.3em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:270px"></div>
+        <div id="hours-submit-pct" class="fw-bold text-primary ms-2" style="font-size:.82rem;min-width:2.8em;text-align:right">0%</div>
+      </div>
+      <div id="hours-submit-substatus" class="text-secondary mb-2" style="font-size:.75rem;min-height:1em"></div>
+      <div class="progress" style="height:6px;border-radius:99px;background:#e9ecef">
+        <div id="hours-submit-bar"
+             class="progress-bar progress-bar-striped progress-bar-animated"
+             style="width:0%;border-radius:99px;transition:width 0.6s ease"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -205,5 +233,113 @@ document.addEventListener('keydown', function(e) {
 
 // Apply initial state on load
 toggleEntry('Multiple');
+
+(function () {
+  let timerInterval = null, startTime = 0;
+
+  function setProgress(pct, msg, sub) {
+    document.getElementById('hours-submit-bar').style.width = pct + '%';
+    document.getElementById('hours-submit-pct').textContent = pct + '%';
+    document.getElementById('hours-submit-status').textContent = msg;
+    const subEl = document.getElementById('hours-submit-substatus');
+    if (subEl) subEl.textContent = sub || '';
+  }
+
+  function tickTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const label = elapsed < 60 ? elapsed + 's'
+      : Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's';
+    document.getElementById('hours-submit-timer').textContent = label;
+  }
+
+  function startOverlay() {
+    startTime = Date.now();
+    document.getElementById('hours-submit-overlay').style.display = 'flex';
+    document.getElementById('hours-submit-timer').textContent = '0s';
+    setProgress(5, 'Connecting to Q360\u2026', '');
+    timerInterval = setInterval(tickTimer, 500);
+  }
+
+  function stopOverlay() {
+    clearInterval(timerInterval);
+    tickTimer();
+    setProgress(100, 'Done!', '');
+    setTimeout(() => { document.getElementById('hours-submit-overlay').style.display = 'none'; }, 400);
+  }
+
+  window.doSubmit = async function () {
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    startOverlay();
+
+    let resp;
+    try {
+      resp = await fetch('{{ url_for("hours.submit_action") }}', {
+        method: 'POST',
+        body: new FormData(document.getElementById('hours-form')),
+      });
+    } catch (err) {
+      stopOverlay();
+      document.getElementById('submit-result').innerHTML =
+        `<div class="alert alert-danger">Network error: ${err.message}</div>`;
+      btn.disabled = false;
+      return;
+    }
+
+    if (!resp.ok) {
+      stopOverlay();
+      document.getElementById('submit-result').innerHTML =
+        `<div class="alert alert-danger">Server error ${resp.status}</div>`;
+      btn.disabled = false;
+      return;
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          let data;
+          try { data = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (data.type === 'progress') {
+            const pct = data.total > 0
+              ? Math.round(5 + (data.done / data.total) * 90)
+              : 10;
+            const sub = data.total > 0 ? `${data.done} / ${data.total} entries` : '';
+            setProgress(pct, data.msg || 'Submitting\u2026', sub);
+
+          } else if (data.type === 'complete') {
+            setProgress(98, 'Finishing\u2026', '');
+            setTimeout(() => {
+              stopOverlay();
+              document.getElementById('submit-result').innerHTML = data.html;
+              document.getElementById('submit-result').scrollIntoView({ behavior: 'smooth' });
+            }, 200);
+
+          } else if (data.type === 'error') {
+            stopOverlay();
+            document.getElementById('submit-result').innerHTML = data.html;
+            btn.disabled = false;
+          }
+        }
+      }
+    } catch (err) {
+      stopOverlay();
+      document.getElementById('submit-result').innerHTML =
+        `<div class="alert alert-danger">Stream error: ${err.message}</div>`;
+      btn.disabled = false;
+    }
+  };
+})();
 </script>
 {% endblock %}

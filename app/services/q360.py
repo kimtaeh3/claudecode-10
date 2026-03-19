@@ -210,6 +210,9 @@ class Q360Service:
             parent_project_no = temp['data']['data']['recordSet']['task']['data'][0]['parentprojectscheduleno']
         except (KeyError, IndexError, ValueError):
             parent_project_no = ''
+        import sys as _sys
+        print(f"  [pageload] task={task_number} uid={uid} parentprojectscheduleno={parent_project_no!r}",
+              file=_sys.stderr, flush=True)
 
         if not task_data:
             try:
