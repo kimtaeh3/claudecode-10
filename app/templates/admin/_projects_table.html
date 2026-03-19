@@ -1,0 +1,28 @@
+{% if not entries %}
+<p class="text-muted small" id="projects-empty">No non-billable projects defined yet.</p>
+{% else %}
+<table class="table table-sm table-hover align-middle mb-0" id="projects-table">
+  <thead class="table-light">
+    <tr>
+      <th>Project name (exact or partial match)</th>
+      <th style="width:60px"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td class="font-monospace" style="font-size:.85rem">{{ e.name }}</td>
+      <td>
+        <button class="btn btn-outline-danger btn-sm py-0"
+                hx-post="{{ url_for('admin.delete_project', entry_id=e.id) }}"
+                hx-target="#projects-list"
+                hx-swap="innerHTML"
+                title="Remove">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

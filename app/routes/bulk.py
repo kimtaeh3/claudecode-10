@@ -368,6 +368,14 @@ def parse():
         total = len(usernames)
         live_by_user = {}
 
+        # Build name lookup: username → "Full Name (username)" or just username
+        name_rows = db.execute('SELECT username, name FROM team_member').fetchall()
+        name_map = {r['username']: r['name'] for r in name_rows if r['name']}
+
+        def _display_user(un):
+            n = name_map.get(un, '')
+            return f'{n} ({un})' if n else un
+
         yield _evt({'type': 'progress', 'done': 0, 'total': total,
                     'user': '', 'msg': 'Connecting to Q360\u2026'})
 
@@ -383,8 +391,43 @@ def parse():
                 un, projects = f.result()
                 live_by_user[un] = projects
                 yield _evt({'type': 'progress', 'done': len(live_by_user),
-                            'total': total, 'user': un,
+                            'total': total, 'user': _display_user(un),
                             'msg': f'Fetched projects for {un}'})
+
+        # Upsert team members: add any new usernames from the upload
+        try:
+            db = get_db()
+            admin_row = db.execute(
+                'SELECT team FROM team_member WHERE username = ?', (session['user_id'],)
+            ).fetchone()
+            default_team = 'All'
+            import re as _re
+            for u in grouped:
+                username = u['username']
+                # Skip blank, too-short, or obviously-derived garbage usernames
+                # Valid Q360 usernames have ≥4 chars and contain at least one letter
+                if not username or len(username) < 4:
+                    continue
+                if not _re.search(r'[a-zA-Z]', username):
+                    continue
+                employee_name = u.get('employee', '') or ''
+                existing = db.execute(
+                    'SELECT id FROM team_member WHERE username = ?', (username,)
+                ).fetchone()
+                if not existing:
+                    db.execute(
+                        'INSERT INTO team_member (username, name, team) VALUES (?, ?, ?)',
+                        (username, employee_name, default_team)
+                    )
+                elif employee_name:
+                    # Update name if we now have one and it was blank before
+                    db.execute(
+                        'UPDATE team_member SET name = ? WHERE username = ? AND (name IS NULL OR name = ?)',
+                        (employee_name, username, '')
+                    )
+            db.commit()
+        except Exception:
+            pass
 
         try:
             html = _do_parse(grouped, live_by_user)

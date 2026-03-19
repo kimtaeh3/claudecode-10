@@ -1,14 +1,19 @@
 <table class="table table-sm table-hover">
   <thead class="table-light">
-    <tr><th>Username</th><th>Team</th><th>Email</th><th></th></tr>
+    <tr><th>Name</th><th>Username</th><th>Team</th><th>Email</th><th></th></tr>
   </thead>
   <tbody>
     {% for m in members %}
     <tr>
+      <td>{{ m.name or '—' }}</td>
       <td>{{ m.username }}</td>
       <td>{{ m.team }}</td>
       <td>{{ m.email or '—' }}</td>
-      <td>
+      <td class="text-end" style="white-space:nowrap">
+        <button class="btn btn-outline-secondary btn-sm me-1"
+                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }})'>
+          <i class="bi bi-pencil"></i>
+        </button>
         <button class="btn btn-danger btn-sm"
                 hx-delete="{{ url_for('admin.delete_user', member_id=m.id) }}"
                 hx-target="#members-table"
@@ -18,7 +23,75 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="4" class="text-muted text-center">No members yet.</td></tr>
+    <tr><td colspan="5" class="text-muted text-center">No members yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+<!-- Edit Member Modal -->
+<div class="modal fade" id="editMemberModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-semibold">Edit Member</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-1">
+        <input type="hidden" id="edit-member-id">
+        <div class="mb-2">
+          <label class="form-label small mb-1">Full Name</label>
+          <input type="text" class="form-control form-control-sm" id="edit-member-name" placeholder="Full name">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1">Username</label>
+          <input type="text" class="form-control form-control-sm" id="edit-member-username" placeholder="Q360 User ID">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1">Team</label>
+          <input type="text" class="form-control form-control-sm" id="edit-member-team" placeholder="Team name">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small mb-1">Email</label>
+          <input type="email" class="form-control form-control-sm" id="edit-member-email" placeholder="Email (optional)">
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0 gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveEditMember()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _editMemberModal = null;
+
+function openEditMemberModal(id, username, name, team, email) {
+  document.getElementById('edit-member-id').value = id;
+  document.getElementById('edit-member-name').value = name || '';
+  document.getElementById('edit-member-username').value = username;
+  document.getElementById('edit-member-team').value = team;
+  document.getElementById('edit-member-email').value = email || '';
+  if (!_editMemberModal) {
+    _editMemberModal = new bootstrap.Modal(document.getElementById('editMemberModal'));
+  }
+  _editMemberModal.show();
+}
+
+function saveEditMember() {
+  const id = document.getElementById('edit-member-id').value;
+  const fd = new FormData();
+  fd.append('name',     document.getElementById('edit-member-name').value.trim());
+  fd.append('username', document.getElementById('edit-member-username').value.trim());
+  fd.append('team',     document.getElementById('edit-member-team').value.trim());
+  fd.append('email',    document.getElementById('edit-member-email').value.trim());
+  fetch('/admin/users/edit/' + id, { method: 'POST', body: fd,
+    headers: { 'HX-Request': 'true' } })
+    .then(r => r.text())
+    .then(html => {
+      document.getElementById('members-table').innerHTML = html;
+      _editMemberModal.hide();
+      if (window.htmx) htmx.process(document.getElementById('members-table'));
+    });
+}
+</script>

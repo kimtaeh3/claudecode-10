@@ -17,6 +17,14 @@ def create_app():
             'CREATE TABLE IF NOT EXISTS username_map '
             '(employee_name TEXT PRIMARY KEY, q360_username TEXT NOT NULL)'
         )
+        _get_db().execute(
+            'CREATE TABLE IF NOT EXISTS nonbillable_project '
+            '(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)'
+        )
+        # Default non-billable project patterns
+        _get_db().execute(
+            "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"
+        )
         _get_db().commit()
 
     from app.routes import auth, hours, forecast, admin, bulk

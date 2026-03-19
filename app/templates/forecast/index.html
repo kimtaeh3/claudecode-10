@@ -1,43 +1,227 @@
 {% extends "base.html" %}
-{% block title %}Forecast{% endblock %}
+{% block title %}Utilization{% endblock %}
 {% block content %}
-<h4 class="mb-4">Forecast</h4>
-{% if rows %}
-<div class="table-responsive">
-  <table class="table table-sm table-hover table-bordered">
-    <thead class="table-dark">
-      <tr>
-        <th>ID</th><th>Progress</th><th>Task</th><th>Customer</th><th>SoW</th>
-        <th>Project</th><th>Team</th><th>PM</th><th>Lead</th>
-        <th>Role</th><th>Rate</th><th>%</th><th>Alloc</th><th>Con</th>
-        <th>Forecast</th><th>Rem</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in rows %}
-      <tr>
-        <td>{{ r.forecast_id }}</td>
-        <td><span class="badge {% if r.progress == 'DONE' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ r.progress }}</span></td>
-        <td>{{ r.task_id }}</td>
-        <td>{{ r.customer }}</td>
-        <td>{{ r.sow }}</td>
-        <td>{{ r.project_name }}</td>
-        <td>{{ r.team }}</td>
-        <td>{{ r.pm }}</td>
-        <td>{{ r.team_lead }}</td>
-        <td>{{ r.role }}</td>
-        <td>{{ r.hrs_rate }}</td>
-        <td>{{ r.perc }}</td>
-        <td>{{ r.alloc }}</td>
-        <td>{{ r.con }}</td>
-        <td>{{ r.forecast }}</td>
-        <td>{{ r.rem }}</td>
-      </tr>
+<h4 class="mb-3">Utilization</h4>
+
+{# ── Filters ── #}
+<form method="get" action="/forecast/" class="row g-2 align-items-end mb-3">
+  <div class="col-auto">
+    <label class="form-label small mb-1">Team</label>
+    <select name="team" class="form-select form-select-sm" style="width:auto">
+      {% for t in teams %}
+      <option value="{{ t }}" {% if t == team_filter %}selected{% endif %}>{{ t }}</option>
       {% endfor %}
-    </tbody>
-  </table>
+    </select>
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">Start</label>
+    <input type="date" name="start" id="start" value="{{ start }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto">
+    <label class="form-label small mb-1">End</label>
+    <input type="date" name="end" id="end" value="{{ end }}" class="form-control form-control-sm">
+  </div>
+  <div class="col-auto d-flex align-items-end">
+    <button type="submit" class="btn btn-primary btn-sm">Search</button>
+  </div>
+</form>
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setWeek()">This Week</button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setMonth()">This Month</button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast3Months()">Last 3 Months</button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setYear()">This Year</button>
 </div>
+
+{% if not users %}
+<p class="text-muted">No hours data found for the selected range. View a team in <a href="/hours/">View Hours</a> to populate utilization.</p>
 {% else %}
-<p class="text-muted">No forecast data found for your account.</p>
+
+{# Determine billable vs non-billable category sets #}
+{% set nb_display = ['Holiday', 'Vacation', 'ADMIN'] %}
+
+{# ── Available hours info bar ── #}
+<div class="d-flex align-items-center gap-3 mb-2" style="font-size:.8rem;color:#6c757d">
+  <span><strong>{{ '%.0f'|format(total_avail) }}h</strong> available ({{ (total_avail/8)|round(0,'floor')|int }} workdays, excl. ON holidays)</span>
+  {% if holidays %}
+  <span class="text-muted" title="{% for h in holidays %}{{ h }}{% if not loop.last %}, {% endif %}{% endfor %}">
+    {{ holidays|length }} holiday{{ 's' if holidays|length != 1 }} in range ⓘ
+  </span>
+  {% endif %}
+</div>
+
+<div class="table-responsive" style="max-height:80vh;overflow:auto">
+<table class="table table-sm table-bordered align-middle" id="forecast-tbl"
+       style="font-size:.82rem;white-space:nowrap">
+  <thead class="table-dark" style="position:sticky;top:0;z-index:2">
+    <tr>
+      <th style="min-width:140px;position:sticky;left:0;z-index:3;background:#212529">Employee</th>
+      <th style="width:100px;position:sticky;left:140px;z-index:3;background:#212529">Type</th>
+      {% for wk in weeks %}
+      <th class="text-center" style="min-width:60px" title="{{ wk.date }} — {{ wk.avail|int }}h avail">
+        {{ wk.label }}<br>
+        <span style="font-size:.65rem;font-weight:normal;opacity:.7">{{ wk.date }}</span>
+      </th>
+      {% endfor %}
+      <th class="text-center" style="min-width:80px;background:#1a3a5c" title="Billable hrs / available work hrs">Util%</th>
+      <th class="text-center" style="min-width:72px;background:#1a3a5c">Total hrs</th>
+      <th class="text-center" style="min-width:72px;background:#1a3a5c">Avg/Wk</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for u in users %}
+    {% set uid = loop.index %}
+
+    {# ── Total row ── #}
+    <tr class="table-light fw-semibold">
+      <td style="position:sticky;left:0;background:#f8f9fa;z-index:1">
+        <span class="fw-bold">{{ u.employee }}</span>
+        <span class="text-muted fw-normal ms-1" style="font-size:.72rem">({{ u.username }})</span>
+      </td>
+      <td style="position:sticky;left:140px;background:#f8f9fa;z-index:1">
+        <span class="badge bg-secondary" style="font-size:.68rem">Total</span>
+      </td>
+      {% for wk in weeks %}
+        {% set h = u.week_data.get(wk.key, {}).get('total', 0) %}
+        {% set avail = wk.avail if wk.avail > 0 else 40 %}
+        <td class="text-center {% if h >= avail %}text-success fw-semibold{% elif h > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+          {{ '%.1f'|format(h) if h > 0 else '—' }}
+        </td>
+      {% endfor %}
+      <td class="text-center fw-bold" style="background:#eaf2ff" title="{{ '%.1f'|format(u.billable) }}h billable / {{ '%.0f'|format(u.avail_hours) }}h available">
+        {% if u.util_pct >= 80 %}<span class="text-success">
+        {% elif u.util_pct >= 60 %}<span class="text-warning">
+        {% else %}<span class="text-danger">
+        {% endif %}{{ '%.0f'|format(u.util_pct) }}%</span>
+      </td>
+      <td class="text-center fw-bold" style="background:#eaf2ff">{{ '%.1f'|format(u.total) }}h</td>
+      <td class="text-center" style="background:#eaf2ff">{{ '%.1f'|format(u.avg_per_week) }}h</td>
+    </tr>
+
+    {# ── Billable summary row (expandable) ── #}
+    <tr class="util-group-row" style="cursor:pointer;background:#f0faf0"
+        onclick="toggleGroup({{ uid }}, 'bill')">
+      <td style="position:sticky;left:0;background:#f0faf0;z-index:1"></td>
+      <td style="position:sticky;left:140px;background:#f0faf0;z-index:1">
+        <span class="badge bg-success" style="font-size:.68rem">
+          <i class="bi bi-chevron-right util-chevron" id="chev-{{ uid }}-bill" style="font-size:.6rem;transition:transform .15s"></i>
+          Billable
+        </span>
+      </td>
+      {% for wk in weeks %}
+        {% set h = u.week_data.get(wk.key, {}).get('billable', 0) %}
+        <td class="text-center text-success fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+      {% endfor %}
+      <td style="background:#eaf2ff"></td>
+      <td class="text-center text-success fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(u.billable) }}h</td>
+      <td style="background:#eaf2ff"></td>
+    </tr>
+
+    {# ── Billable detail rows (collapsed by default) ── #}
+    {% for cat in all_cats %}
+      {% if not (cat in nb_display or '(Internal)' in cat) %}
+        {% set cat_total = u.cat_totals.get(cat, 0) %}
+        {% if cat_total > 0 %}
+        <tr class="util-detail util-detail-{{ uid }}-bill" style="display:none">
+          <td style="position:sticky;left:0;background:#fff;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#fff;z-index:1;padding-left:1.4rem">
+            <span class="badge bg-success" style="font-size:.63rem;opacity:.85">{{ cat }}</span>
+          </td>
+          {% for wk in weeks %}
+            {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
+            <td class="text-center text-success" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+          {% endfor %}
+          <td style="background:#eaf2ff"></td>
+          <td class="text-center text-success fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
+          <td style="background:#eaf2ff"></td>
+        </tr>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {# ── Non-Billable summary row (expandable) ── #}
+    <tr class="util-group-row" style="cursor:pointer;background:#fffbf0"
+        onclick="toggleGroup({{ uid }}, 'nb')">
+      <td style="position:sticky;left:0;background:#fffbf0;z-index:1"></td>
+      <td style="position:sticky;left:140px;background:#fffbf0;z-index:1">
+        <span class="badge bg-warning text-dark" style="font-size:.68rem">
+          <i class="bi bi-chevron-right util-chevron" id="chev-{{ uid }}-nb" style="font-size:.6rem;transition:transform .15s"></i>
+          Non-Billable
+        </span>
+      </td>
+      {% for wk in weeks %}
+        {% set h = u.week_data.get(wk.key, {}).get('nonbillable', 0) %}
+        <td class="text-center text-secondary fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+      {% endfor %}
+      <td style="background:#eaf2ff"></td>
+      <td class="text-center text-secondary fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(u.nonbillable) }}h</td>
+      <td style="background:#eaf2ff"></td>
+    </tr>
+
+    {# ── Non-Billable detail rows (collapsed by default) ── #}
+    {% for cat in all_cats %}
+      {% if cat in nb_display or '(Internal)' in cat %}
+        {% set cat_total = u.cat_totals.get(cat, 0) %}
+        {% if cat_total > 0 %}
+        <tr class="util-detail util-detail-{{ uid }}-nb" style="display:none">
+          <td style="position:sticky;left:0;background:#fff;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#fff;z-index:1;padding-left:1.4rem">
+            <span class="badge bg-warning text-dark" style="font-size:.63rem;opacity:.9">{{ cat }}</span>
+          </td>
+          {% for wk in weeks %}
+            {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
+            <td class="text-center text-secondary" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+          {% endfor %}
+          <td style="background:#eaf2ff"></td>
+          <td class="text-center text-secondary" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
+          <td style="background:#eaf2ff"></td>
+        </tr>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {# Spacer between users #}
+    {% if not loop.last %}
+    <tr style="height:4px;background:#dee2e6"><td colspan="{{ 3 + weeks|length + 3 }}"></td></tr>
+    {% endif %}
+  {% endfor %}
+  </tbody>
+
+  {# ── Team totals footer ── #}
+  <tfoot class="table-dark" style="position:sticky;bottom:0;z-index:2">
+    {% set total_all = users | sum(attribute='total') %}
+    {% set total_bill = users | sum(attribute='billable') %}
+    {% set team_avail = total_avail * users|length %}
+    {% set team_util = (total_bill / team_avail * 100) if team_avail > 0 else 0 %}
+    <tr>
+      <td style="position:sticky;left:0;background:#212529;z-index:3" class="fw-bold">Team Total</td>
+      <td style="position:sticky;left:140px;background:#212529;z-index:3">
+        <span class="badge bg-secondary" style="font-size:.68rem">All</span>
+      </td>
+      {% for wk in weeks %}
+        {% set wk_total = namespace(h=0) %}
+        {% for u in users %}{% set wk_total.h = wk_total.h + u.week_data.get(wk.key, {}).get('total', 0) %}{% endfor %}
+        {% set team_avail_wk = wk.avail * users|length %}
+        <td class="text-center fw-semibold {% if wk_total.h >= team_avail_wk and wk_total.h > 0 %}text-success{% elif wk_total.h > 0 %}text-warning{% endif %}">
+          {{ '%.1f'|format(wk_total.h) if wk_total.h > 0 else '—' }}
+        </td>
+      {% endfor %}
+      <td class="text-center fw-bold" style="background:#1a3a5c" title="Team billable / (available × headcount)">{{ '%.0f'|format(team_util) }}%</td>
+      <td class="text-center fw-bold" style="background:#1a3a5c">{{ '%.1f'|format(total_all) }}h</td>
+      <td class="text-center" style="background:#1a3a5c">{{ users|length }} user{{ 's' if users|length != 1 }}</td>
+    </tr>
+  </tfoot>
+</table>
+</div>
+
+<script>
+function toggleGroup(uid, group) {
+  const rows = document.querySelectorAll('.util-detail-' + uid + '-' + group);
+  const chev = document.getElementById('chev-' + uid + '-' + group);
+  const isHidden = rows.length > 0 && rows[0].style.display === 'none';
+  rows.forEach(r => r.style.display = isHidden ? '' : 'none');
+  if (chev) chev.style.transform = isHidden ? 'rotate(90deg)' : '';
+}
+</script>
 {% endif %}
 {% endblock %}

@@ -329,11 +329,9 @@ class Q360Service:
 
     @staticmethod
     def _week_dates(year: int, week: int):
-        days = {'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
-                'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7}
-        a = datetime.strptime(str(year), '%Y') + timedelta(days=7 * (week - 1))
-        a += timedelta(days=7 - days.get(a.strftime('%A'), 0))
-        return [(a + timedelta(days=k)).strftime('%Y-%m-%d') for k in range(7)]
+        # Use ISO 8601 week: %G=ISO year, %V=ISO week, %u=ISO weekday (1=Mon)
+        monday = datetime.strptime(f'{year} {week:02d} 1', '%G %V %u')
+        return [(monday + timedelta(days=k)).strftime('%Y-%m-%d') for k in range(7)]
 
     def _month_split(self, end_time_str: str):
         wn = self._iso_week_num(end_time_str[:10])

@@ -11,12 +11,27 @@ def _svc():
     return Q360Service(session['user_id'], session['password'])
 
 
+def _distinct_teams(db):
+    """Return sorted unique individual team names from comma-separated team column."""
+    rows = db.execute('SELECT team FROM team_member').fetchall()
+    seen = set()
+    for r in rows:
+        for t in r['team'].split(','):
+            t = t.strip()
+            if t:
+                seen.add(t)
+    teams = sorted(seen)
+    # Ensure "All" is first
+    if 'All' in teams:
+        teams = ['All'] + [t for t in teams if t != 'All']
+    return teams
+
+
 @bp.route('/')
 @login_required
 def view():
     db = get_db()
-    teams = [r['team'] for r in db.execute(
-        'SELECT DISTINCT team FROM team_member ORDER BY team').fetchall()]
+    teams = _distinct_teams(db)
     return render_template('hours/view.html', teams=teams)
 
 
@@ -36,8 +51,13 @@ def table():
 
     if team and team != 'Single':
         db = get_db()
-        members = db.execute(
-            'SELECT username FROM team_member WHERE team = ?', (team,)).fetchall()
+        if team == 'All':
+            members = db.execute('SELECT username FROM team_member').fetchall()
+        else:
+            members = db.execute(
+                "SELECT username FROM team_member "
+                "WHERE INSTR(',' || team || ',', ',' || ? || ',') > 0",
+                (team,)).fetchall()
         for m in members:
             try:
                 results[m['username']] = svc.get_hours(m['username'], start, end)
@@ -50,6 +70,33 @@ def table():
             return f'<div class="alert alert-danger">Error: {e}</div>'
     else:
         return '<p class="text-muted">Enter a user ID or select a team.</p>'
+
+    # Persist fetched hours to DB for Forecast view
+    try:
+        db = get_db()
+        db.execute('CREATE TABLE IF NOT EXISTS bulk_hours ('
+                   'id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, '
+                   'employee TEXT NOT NULL DEFAULT \'\', q360id TEXT NOT NULL DEFAULT \'\', '
+                   'project TEXT NOT NULL DEFAULT \'\', category TEXT NOT NULL DEFAULT \'\', '
+                   'company TEXT NOT NULL DEFAULT \'\', date TEXT NOT NULL, hours REAL NOT NULL, '
+                   'submitted_at TEXT NOT NULL DEFAULT (datetime(\'now\',\'localtime\')), '
+                   'timebillno TEXT)')
+        for uid, data in results.items():
+            db.execute('DELETE FROM bulk_hours WHERE username = ? AND date BETWEEN ? AND ?',
+                       (uid, start, end))
+            for entry in data.get('userReport', []):
+                date_val = (entry.get('startDate') or '')[:10]
+                if not date_val:
+                    continue
+                db.execute(
+                    'INSERT INTO bulk_hours (username, employee, q360id, project, category, company, date, hours) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    (uid, uid, '', entry.get('project', ''), entry.get('category', ''),
+                     entry.get('company', ''), date_val, float(entry.get('hours', 0)))
+                )
+        db.commit()
+    except Exception:
+        pass  # DB failure must not break the hours view
 
     return render_template('hours/_table.html', results=results)
 

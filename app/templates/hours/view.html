@@ -5,7 +5,6 @@
 
 <form hx-get="{{ url_for('hours.table') }}"
       hx-target="#hours-result"
-      hx-indicator="#spinner"
       class="row g-3 mb-4">
 
   <div class="col-md-3">
@@ -35,13 +34,14 @@
 
   <div class="col-md-2 d-flex align-items-end gap-2">
     <button type="submit" class="btn btn-primary">Search</button>
-    <span id="spinner" class="htmx-indicator spinner-border spinner-border-sm text-primary ms-1"></span>
   </div>
 
   <div class="col-12">
     <div class="d-flex gap-2">
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setWeek()">This Week</button>
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setMonth()">This Month</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast3Months()">Last 3 Months</button>
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setYear()">This Year</button>
     </div>
   </div>
@@ -50,4 +50,63 @@
 <div id="hours-result">
   <p class="text-muted">Select a date range and click Search.</p>
 </div>
+
+<!-- Search loading overlay -->
+<div id="search-overlay" style="
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);z-index:10000;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(2px)">
+  <div class="card shadow-lg border-0" style="width:340px;border-radius:16px;overflow:hidden">
+    <div class="card-body p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status"></div>
+          <span class="fw-semibold">Fetching hours…</span>
+        </div>
+        <div id="search-timer" class="text-secondary" style="font-size:.8rem;font-variant-numeric:tabular-nums">0s</div>
+      </div>
+      <div id="search-status" class="text-muted mb-2" style="font-size:.82rem;min-height:1.3em">Contacting Q360…</div>
+      <div class="progress" style="height:6px;border-radius:99px;background:#e9ecef">
+        <div id="search-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+             style="width:100%;border-radius:99px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  let timerInterval = null, startTime = 0;
+
+  function tickTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const label = elapsed < 60 ? elapsed + 's'
+      : Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's';
+    document.getElementById('search-timer').textContent = label;
+  }
+
+  function showOverlay() {
+    startTime = Date.now();
+    document.getElementById('search-timer').textContent = '0s';
+    document.getElementById('search-status').textContent = 'Contacting Q360\u2026';
+    document.getElementById('search-overlay').style.display = 'flex';
+    timerInterval = setInterval(tickTimer, 500);
+  }
+
+  function hideOverlay() {
+    clearInterval(timerInterval);
+    tickTimer();
+    document.getElementById('search-overlay').style.display = 'none';
+  }
+
+  const form = document.querySelector('form[hx-get]');
+  if (form) {
+    form.addEventListener('htmx:beforeRequest', showOverlay);
+  }
+  // htmx:afterSettle fires on the target element, not the form — listen on document
+  document.addEventListener('htmx:afterSettle', hideOverlay);
+  document.addEventListener('htmx:responseError', hideOverlay);
+})();
+</script>
 {% endblock %}

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS login_log (
 CREATE TABLE IF NOT EXISTS team_member (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT    NOT NULL UNIQUE,
+    name     TEXT    NOT NULL DEFAULT '',
     team     TEXT    NOT NULL,
     email    TEXT
 );
@@ -68,6 +69,12 @@ CREATE TABLE IF NOT EXISTS forecast (
     rem          INTEGER NOT NULL DEFAULT 0
 );
 
+-- Non-billable project names (project title substrings that are always non-billable)
+CREATE TABLE IF NOT EXISTS nonbillable_project (
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name  TEXT    NOT NULL UNIQUE
+);
+
 -- Username corrections: maps Excel-derived username → correct Q360 username
 CREATE TABLE IF NOT EXISTS username_map (
     employee_name TEXT PRIMARY KEY,  -- Full name from Excel (e.g. "Asokan Gunanathan")
@@ -79,6 +86,21 @@ CREATE TABLE IF NOT EXISTS bulk_config (
     key      TEXT PRIMARY KEY,
     project  TEXT NOT NULL DEFAULT '',
     q360id   TEXT NOT NULL DEFAULT ''
+);
+
+-- Bulk upload submitted hours log (for Forecast view)
+CREATE TABLE IF NOT EXISTS bulk_hours (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT NOT NULL,
+    employee     TEXT NOT NULL DEFAULT '',
+    q360id       TEXT NOT NULL,
+    project      TEXT NOT NULL DEFAULT '',
+    category     TEXT NOT NULL DEFAULT '',
+    company      TEXT NOT NULL DEFAULT '',
+    date         TEXT NOT NULL,           -- YYYY-MM-DD
+    hours        REAL NOT NULL,
+    submitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    timebillno   TEXT
 );
 
 -- Forecast weeks

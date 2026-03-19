@@ -385,14 +385,39 @@ function adjustRowHours(btn, delta) {
 
 function onProjectChange(sel) {
   const opt = sel.options[sel.selectedIndex];
-  if (!opt || !opt.dataset.q360) return;
   const tr = sel.closest('tr');
   const q360 = tr.querySelector('.q360id-field');
   const display = tr.querySelector('.q360id-display');
-  const cat  = tr.querySelector('.category-field');
-  if (q360 && opt.dataset.q360) q360.value = opt.dataset.q360;
-  if (display) display.textContent = opt.dataset.q360 || '';
-  if (cat  && opt.dataset.cat)  cat.value  = opt.dataset.cat;
+  const cat = tr.querySelector('.category-field');
+  // Support both data-q360 (server-rendered) and plain value (client-loaded)
+  const q360val = (opt && (opt.dataset.q360 || (opt.value && opt.value !== '')))
+                  ? (opt.dataset.q360 || opt.value) : '';
+  if (q360) q360.value = q360val;
+  if (display) display.textContent = q360val || '';
+  if (cat && opt && opt.dataset.cat) cat.value = opt.dataset.cat;
+  if (q360val) {
+    tr.dataset.attention = 'false';
+    tr.classList.remove('table-warning');
+    const warnBadge = tr.querySelector('.badge.bg-warning.text-dark');
+    if (warnBadge && warnBadge.textContent.includes('No Project')) {
+      warnBadge.className = 'badge bg-success';
+      warnBadge.style.textDecoration = '';
+      warnBadge.style.opacity = '';
+      warnBadge.textContent = 'OK';
+    }
+    if (cat) cat.disabled = false;
+    tr.querySelectorAll('.hours-field').forEach(inp => { inp.disabled = false; });
+  } else if (tr.dataset.missing !== 'true') {
+    tr.dataset.attention = 'true';
+    tr.classList.add('table-warning');
+    const okBadge = tr.querySelector('.badge.bg-success[data-row-status], .badge.bg-success');
+    if (okBadge && !okBadge.textContent.includes('missing')) {
+      okBadge.className = 'badge bg-warning text-dark';
+      okBadge.textContent = '⚠ No Project';
+    }
+    if (cat) cat.disabled = true;
+    tr.querySelectorAll('.hours-field').forEach(inp => { inp.disabled = true; });
+  }
   updateTallies(); validate();
 }
 
@@ -821,6 +846,21 @@ function applyProjectChoice(sel) {
 
     document.getElementById('submit-btn').disabled = hasStatusError || hasLowHours;
     document.getElementById('validation-msg').textContent = '';
+
+    // Gate per-user commit checkbox: only enabled when ALL rows for that user have a project
+    document.querySelectorAll('.commit-user-cb').forEach(cb => {
+      const uname = cb.dataset.commitUsername;
+      const uRows = getProjectRows().filter(tr => tr.dataset.username === uname);
+      const allHaveProject = uRows.every(tr => (tr.querySelector('.q360id-field')?.value || '') !== '');
+      cb.disabled = !allHaveProject;
+      const wrap = cb.closest('.commit-cb-wrap');
+      if (!allHaveProject) {
+        cb.checked = false;
+        if (wrap) wrap.title = 'Select a project for all rows first';
+      } else {
+        if (wrap) wrap.title = '';
+      }
+    });
   }
 
   function buildPayload() {
@@ -893,9 +933,11 @@ function applyProjectChoice(sel) {
 
 let _editUsernameIdx = null;
 let _editUsernameModal = null;
+let _editOldUsername = null;
 
 function openEditUsernameModal(idx, employee, currentUsername) {
   _editUsernameIdx = idx;
+  _editOldUsername = currentUsername;
   document.getElementById('edit-username-employee-label').textContent = employee;
   const inp = document.getElementById('edit-username-input');
   inp.value = currentUsername;
@@ -924,10 +966,26 @@ function saveUsernameModal() {
   fetch('/bulk/save-username', { method: 'POST', body: fd })
     .then(r => {
       if (r.ok) {
-        // Update the username display in the table header
+        // Update display span
         const display = document.querySelector('.user-username-display-' + _editUsernameIdx);
         if (display) display.textContent = '(' + newUsername + ')';
+        // Update all data-attributes that reference the old username
+        const old = _editOldUsername;
+        document.querySelectorAll('tr[data-username="' + old + '"]').forEach(tr => {
+          tr.dataset.username = newUsername;
+        });
+        const hdr = document.querySelector('tr[data-user-header="' + old + '"]');
+        if (hdr) hdr.dataset.userHeader = newUsername;
+        document.querySelectorAll('tr[data-tally-for="' + old + '"]').forEach(tr => {
+          tr.dataset.tallyFor = newUsername;
+        });
+        const commitCb = document.querySelector('.commit-user-cb[data-commit-username="' + old + '"]');
+        if (commitCb) { commitCb.dataset.commitUsername = newUsername; commitCb.id = 'commit-' + newUsername; }
+        const skipCb = document.querySelector('.skip-user-cb[data-skip-username="' + old + '"]');
+        if (skipCb) { skipCb.dataset.skipUsername = newUsername; skipCb.id = 'skip-' + newUsername; }
         _editUsernameModal.hide();
+        // Reload projects for the new username
+        loadUserProjects(newUsername);
       } else {
         inp.classList.add('is-invalid');
         alert('Failed to save username.');
@@ -935,5 +993,102 @@ function saveUsernameModal() {
     })
     .catch(() => alert('Network error saving username.'));
 }
+
+async function loadUserProjects(username) {
+  // Remove any existing bad-username badge for this user
+  const hdr = document.querySelector('tr[data-user-header="' + username + '"]');
+  if (hdr) hdr.querySelectorAll('.badge-bad-username').forEach(b => b.remove());
+
+  let options = [];
+  let failed = false;
+  try {
+    const resp = await fetch('/hours/projects?user=' + encodeURIComponent(username));
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const html = await resp.text();
+    const doc = new DOMParser().parseFromString('<select>' + html + '</select>', 'text/html');
+    options = Array.from(doc.querySelectorAll('option')).filter(o => o.value.trim() !== '');
+  } catch(e) {
+    failed = true;
+  }
+
+  if (failed || options.length === 0) {
+    // Flag user with bad-username badge
+    if (hdr) {
+      const td = hdr.querySelector('td:first-child');
+      if (td) {
+        const badge = document.createElement('span');
+        badge.className = 'ms-1 badge bg-danger badge-bad-username';
+        badge.style.fontSize = '.65rem';
+        badge.title = 'Unable to load projects — edit username to correct';
+        badge.textContent = '⚠ bad username';
+        td.appendChild(badge);
+      }
+    }
+    window.validate && window.validate();
+    return;
+  }
+
+  // Deduplicate: for options with the same description, keep the highest numeric ID
+  // (handles duplicate VACATION/TRAINING/HOLIDAY/ADMIN entries)
+  const byDesc = {};
+  options.forEach(o => {
+    const text = o.textContent.trim();
+    // Description is everything before the last ' — <id>' suffix
+    const lastDash = text.lastIndexOf(' — ');
+    const desc = lastDash >= 0 ? text.slice(0, lastDash) : text;
+    const id = parseInt(o.value) || 0;
+    if (!byDesc[desc] || id > (parseInt(byDesc[desc].value) || 0)) {
+      byDesc[desc] = o;
+    }
+  });
+
+  // Sort alphabetically by label, filter 59-prefix
+  const sorted = Object.values(byDesc)
+    .filter(o => !o.value.startsWith('59'))
+    .sort((a, b) => a.textContent.trim().localeCompare(b.textContent.trim()));
+
+  // Rebuild all .project-field selects for this user
+  document.querySelectorAll('tr[data-username="' + username + '"] .project-field').forEach(sel => {
+    const currentQ360 = sel.closest('tr').querySelector('.q360id-field')?.value || '';
+    sel.innerHTML = '<option value="">— select —</option>';
+    sorted.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.dataset.q360 = opt.value;
+      o.textContent = opt.textContent.trim();
+      if (opt.value === currentQ360) o.selected = true;
+      sel.appendChild(o);
+    });
+    // Sync display if already selected
+    if (sel.value) {
+      const tr = sel.closest('tr');
+      const q360Field = tr.querySelector('.q360id-field');
+      const display = tr.querySelector('.q360id-display');
+      if (q360Field) q360Field.value = sel.value;
+      if (display) display.textContent = sel.value;
+      tr.dataset.attention = 'false';
+      tr.classList.remove('table-warning');
+      const warnBadge = tr.querySelector('.badge.bg-warning.text-dark');
+      if (warnBadge && warnBadge.textContent.includes('No Project')) {
+        warnBadge.className = 'badge bg-success';
+        warnBadge.style.textDecoration = '';
+        warnBadge.style.opacity = '';
+        warnBadge.textContent = 'OK';
+      }
+      const cat = tr.querySelector('.category-field');
+      if (cat) cat.disabled = false;
+      tr.querySelectorAll('.hours-field').forEach(inp => { inp.disabled = false; });
+    }
+  });
+
+  window.updateTallies && window.updateTallies();
+  window.validate && window.validate();
+}
+
+// On page load: fetch projects for each unique user
+document.querySelectorAll('tr[data-user-header]').forEach(hdr => {
+  const username = hdr.dataset.userHeader;
+  if (username) loadUserProjects(username);
+});
 </script>
 {% endif %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Project Codes{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h4 class="mb-0">Project Codes</h4>
+</div>
+
+<p class="text-muted small mb-3">
+  Projects listed here are treated as <strong>non-billable</strong> in Utilization, regardless of category.
+  Matching is case-insensitive and partial (e.g. <code>INTERNAL CONNEX</code> matches any project containing that text).
+</p>
+
+{# ── Add form ── #}
+<form hx-post="{{ url_for('admin.add_project') }}"
+      hx-target="#projects-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="this.reset()"
+      class="d-flex gap-2 mb-4" style="max-width:520px">
+  <input type="text" name="name" class="form-control form-control-sm"
+         placeholder="Project name or partial match (e.g. INTERNAL CONNEX ONTARIO)" required>
+  <button type="submit" class="btn btn-primary btn-sm text-nowrap">
+    <i class="bi bi-plus-lg me-1"></i>Add
+  </button>
+</form>
+
+<div id="projects-list">
+  {% include 'admin/_projects_table.html' %}
+</div>
+{% endblock %}
