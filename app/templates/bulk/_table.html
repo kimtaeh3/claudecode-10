@@ -196,13 +196,13 @@
         {% endif %}
         {% set ns.prev_week = row.week_num %}
 
-      <tr class="{% if row.missing_week %}table-danger{% elif row.suggested %}table-info{% elif row.needs_attention %}table-warning{% endif %}"
+      <tr class="{% if row.missing_week %}table-danger{% elif row.needs_attention %}table-warning{% endif %}"
           data-username="{{ row.username }}"
           data-rownum="{{ row.row_num }}"
           data-week="{{ row.week_num }}"
-          data-attention="{{ 'true' if (row.needs_attention and not row.missing_week and not (row.suggested or row.project_guessed)) else 'false' }}"
+          data-attention="{{ 'true' if (row.needs_attention and not row.missing_week) else 'false' }}"
           data-missing="{{ 'true' if row.missing_week else 'false' }}"
-          data-suggested="{{ 'true' if (not row.missing_week and not row.needs_attention and (row.suggested or row.project_guessed)) else 'false' }}"
+          data-suggested="false"
           {% if row.missing_week %}style="opacity:.85;background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(220,53,69,.07) 6px,rgba(220,53,69,.07) 12px)"{% endif %}>
 
         <td class="text-center p-1">
@@ -215,8 +215,7 @@
           <span class="text-muted" style="font-size:.65rem">{{ row.week_range.split(': ', 1)[-1] }}</span>
         </td>
         <td class="text-nowrap small">{{ user.employee }}</td>
-        <td style="max-width:220px" class="{% if row.project_guessed %}bg-info bg-opacity-25{% endif %}"
-            {% if row.project_guessed %}style="border:2px solid #0dcaf0!important"{% endif %}>
+        <td style="max-width:220px">
           {% set user_projs = user_projects.get(user.username, []) %}
           {% set ns2 = namespace(matched=false) %}
           <select class="form-select form-select-sm project-field" data-row="{{ rid }}"
@@ -232,19 +231,17 @@
             {% endfor %}
             {# No __current__ fallback — live Q360 projects are always used #}
           </select>
-          {% if row.project_guessed %}<div class="text-info" style="font-size:.65rem">⚡ guessed</div>{% endif %}
         </td>
 
         {# Q360 ID (hidden — task ID is fetched live from Q360 at submission time) #}
         <td style="display:none">
-          <input type="hidden" class="q360id-field" data-row="{{ rid }}"
-                 value="{{ row.q360id if not row.needs_attention else (row.recommended_q360ids[0] if row.recommended_q360ids | length >= 1 else '') }}">
+          <input type="hidden" class="q360id-field" data-row="{{ rid }}" value="{{ row.q360id }}">
         </td>
 
         {# Category column #}
         <td>
           <select class="form-select form-select-sm category-field" data-row="{{ rid }}"
-                  {% if row.needs_attention and not row.recommended_q360ids %}disabled{% endif %}>
+                  {% if row.needs_attention %}disabled{% endif %}>
             {% for c in categories %}
             <option value="{{ c }}" {% if c == default_category %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
@@ -261,7 +258,7 @@
                  data-row="{{ rid }}" data-username="{{ row.username }}"
                  data-week="{{ row.week_num }}" data-date="{{ d.date }}"
                  value="{{ d.hours }}" min="0.5" max="24" step="0.5"
-                 {% if row.needs_attention and not row.recommended_q360ids %}disabled{% endif %}>
+                 {% if row.needs_attention %}disabled{% endif %}>
           <div class="text-muted" style="font-size:.6rem">{{ d.date[5:] }}</div>
           {% else %}
           <span class="text-muted">—</span>
@@ -273,12 +270,8 @@
           {% if row.missing_week %}
             <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
             <div style="font-size:.6rem;color:#888">from Wk {{ row.missing_guessed_from }}</div>
-          {% elif row.needs_attention and not row.recommended_q360ids %}
+          {% elif row.needs_attention %}
             <span class="badge bg-warning text-dark">⚠ No Project Selected</span>
-          {% elif row.suggested or row.project_guessed %}
-            <span class="badge bg-info text-dark">⚡ guessed</span>
-          {% elif row.needs_attention and row.recommended_q360ids | length > 1 %}
-            <span class="badge bg-warning text-dark">pick ID</span>
           {% else %}
             <span class="badge bg-success" data-row-status="{{ rid }}">OK</span>
           {% endif %}

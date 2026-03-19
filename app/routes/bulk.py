@@ -77,30 +77,8 @@ def _build_recommendations(task_rows):
         if not candidates:
             candidates = _collect(by_user, u, wk)
         r['recommended_q360ids'] = sorted(candidates)
-        # Auto-apply single match
-        if len(candidates) == 1:
-            qid = sorted(candidates)[0]
-            r['q360id'] = qid
-            r['suggested'] = True
-            r['needs_attention'] = False
-            # Also fill customer/project if missing
-            if not r['customer'] and not r['project']:
-                details = q360_details.get((u, qid))
-                if details:
-                    r['customer']       = details[0]
-                    r['project']        = details[1]
-                    r['project_guessed'] = True
-        else:
-            r['suggested'] = False
+        r['suggested'] = False
 
-    # Third pass: fill missing customer/project for any row that has a q360id but blank customer
-    for r in task_rows:
-        if r['q360id'] and not r['customer'] and not r['project']:
-            details = q360_details.get((r['username'], r['q360id']))
-            if details:
-                r['customer']        = details[0]
-                r['project']         = details[1]
-                r['project_guessed'] = True
 
 
 def _assign_time_slots(task_rows):
