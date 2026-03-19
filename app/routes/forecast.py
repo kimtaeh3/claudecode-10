@@ -183,10 +183,13 @@ def index():
         return raw_cat
 
     # Build per-user data, applying both category and project-name non-billable rules
-    # user_weeks[u][wk] = {total, billable, nonbillable, cats: {display_cat: hours}}
-    user_weeks = defaultdict(lambda: defaultdict(
-        lambda: {'total': 0.0, 'billable': 0.0, 'nonbillable': 0.0, 'cats': defaultdict(float)}
-    ))
+    # user_weeks[u][wk] = {total, billable, nonbillable, cats: {disp_cat: hours},
+    #                       cat_projects: {disp_cat: {project: hours}}}
+    user_weeks = defaultdict(lambda: defaultdict(lambda: {
+        'total': 0.0, 'billable': 0.0, 'nonbillable': 0.0,
+        'cats': defaultdict(float),
+        'cat_projects': defaultdict(lambda: defaultdict(float)),
+    }))
     user_employee = {}
     user_min_date = {}
     user_max_date = {}
@@ -204,8 +207,10 @@ def index():
             disp_cat = base_cat + ' (Internal)'
         else:
             disp_cat = base_cat
+        proj_name = (r['project'] or '').strip() or '(no project)'
         user_weeks[u][wk]['total'] += hrs
         user_weeks[u][wk]['cats'][disp_cat] += hrs
+        user_weeks[u][wk]['cat_projects'][disp_cat][proj_name] += hrs
         if is_nb:
             user_weeks[u][wk]['nonbillable'] += hrs
         else:
@@ -247,11 +252,15 @@ def index():
         user_avail = _available_hours(u_start, u_end, holidays)
         util_pct = (total_bill / user_avail * 100) if user_avail > 0 else 0
         avg_per_week = (total_all / weeks_worked) if weeks_worked > 0 else 0
-        # Per-category totals across all weeks
+        # Per-category and per-category-project totals across all weeks
         cat_totals = defaultdict(float)
+        cat_proj_totals = defaultdict(lambda: defaultdict(float))
         for wk_data in wdata.values():
             for cat, hrs in wk_data['cats'].items():
                 cat_totals[cat] += hrs
+            for cat, projs in wk_data['cat_projects'].items():
+                for proj, hrs in projs.items():
+                    cat_proj_totals[cat][proj] += hrs
 
         users.append({
             'username': username,
@@ -265,6 +274,7 @@ def index():
             'weeks_worked': weeks_worked,
             'avail_hours': user_avail,
             'cat_totals': dict(cat_totals),
+            'cat_proj_totals': {c: dict(p) for c, p in cat_proj_totals.items()},
         })
 
     return render_template('forecast/index.html',

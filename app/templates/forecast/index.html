@@ -121,11 +121,16 @@
     {% for cat in all_cats %}
       {% if not (cat in nb_display or '(Internal)' in cat) %}
         {% set cat_total = u.cat_totals.get(cat, 0) %}
+        {% set cat_idx = uid ~ '_b_' ~ loop.index %}
         {% if cat_total > 0 %}
-        <tr class="util-detail util-detail-{{ uid }}-bill" style="display:none">
-          <td style="position:sticky;left:0;background:#fff;z-index:1"></td>
-          <td style="position:sticky;left:140px;background:#fff;z-index:1;padding-left:1.4rem">
-            <span class="badge bg-success" style="font-size:.63rem;opacity:.85">{{ cat }}</span>
+        <tr class="util-detail util-detail-{{ uid }}-bill" style="display:none;cursor:pointer;background:#f6fdf6"
+            onclick="toggleProjects('{{ cat_idx }}')">
+          <td style="position:sticky;left:0;background:#f6fdf6;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#f6fdf6;z-index:1;padding-left:1.4rem">
+            <span class="badge bg-success" style="font-size:.63rem;opacity:.85">
+              <i class="bi bi-chevron-right util-chevron" id="chev-{{ cat_idx }}" style="font-size:.55rem;transition:transform .15s"></i>
+              {{ cat }}
+            </span>
           </td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
@@ -135,6 +140,20 @@
           <td class="text-center text-success fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
           <td style="background:#eaf2ff"></td>
         </tr>
+        {# Project breakdown rows #}
+        {% for proj, phrs in u.cat_proj_totals.get(cat, {}).items()|sort %}
+        <tr class="util-proj util-proj-{{ cat_idx }}" style="display:none;background:#f9fff9">
+          <td style="position:sticky;left:0;background:#f9fff9;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#f9fff9;z-index:1;padding-left:2.4rem;font-size:.75rem;color:#198754;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="{{ proj }}">{{ proj }}</td>
+          {% for wk in weeks %}
+            {% set h = u.week_data.get(wk.key, {}).get('cat_projects', {}).get(cat, {}).get(proj, 0) %}
+            <td class="text-center" style="font-size:.74rem;color:#198754">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+          {% endfor %}
+          <td style="background:#eaf2ff"></td>
+          <td class="text-center" style="background:#eaf2ff;font-size:.75rem;color:#198754">{{ '%.1f'|format(phrs) }}h</td>
+          <td style="background:#eaf2ff"></td>
+        </tr>
+        {% endfor %}
         {% endif %}
       {% endif %}
     {% endfor %}
@@ -162,11 +181,16 @@
     {% for cat in all_cats %}
       {% if cat in nb_display or '(Internal)' in cat %}
         {% set cat_total = u.cat_totals.get(cat, 0) %}
+        {% set cat_idx = uid ~ '_n_' ~ loop.index %}
         {% if cat_total > 0 %}
-        <tr class="util-detail util-detail-{{ uid }}-nb" style="display:none">
-          <td style="position:sticky;left:0;background:#fff;z-index:1"></td>
-          <td style="position:sticky;left:140px;background:#fff;z-index:1;padding-left:1.4rem">
-            <span class="badge bg-warning text-dark" style="font-size:.63rem;opacity:.9">{{ cat }}</span>
+        <tr class="util-detail util-detail-{{ uid }}-nb" style="display:none;cursor:pointer;background:#fffdf5"
+            onclick="toggleProjects('{{ cat_idx }}')">
+          <td style="position:sticky;left:0;background:#fffdf5;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#fffdf5;z-index:1;padding-left:1.4rem">
+            <span class="badge bg-warning text-dark" style="font-size:.63rem;opacity:.9">
+              <i class="bi bi-chevron-right util-chevron" id="chev-{{ cat_idx }}" style="font-size:.55rem;transition:transform .15s"></i>
+              {{ cat }}
+            </span>
           </td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
@@ -176,6 +200,20 @@
           <td class="text-center text-secondary" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
           <td style="background:#eaf2ff"></td>
         </tr>
+        {# Project breakdown rows #}
+        {% for proj, phrs in u.cat_proj_totals.get(cat, {}).items()|sort %}
+        <tr class="util-proj util-proj-{{ cat_idx }}" style="display:none;background:#fffef8">
+          <td style="position:sticky;left:0;background:#fffef8;z-index:1"></td>
+          <td style="position:sticky;left:140px;background:#fffef8;z-index:1;padding-left:2.4rem;font-size:.75rem;color:#856404;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="{{ proj }}">{{ proj }}</td>
+          {% for wk in weeks %}
+            {% set h = u.week_data.get(wk.key, {}).get('cat_projects', {}).get(cat, {}).get(proj, 0) %}
+            <td class="text-center" style="font-size:.74rem;color:#856404">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+          {% endfor %}
+          <td style="background:#eaf2ff"></td>
+          <td class="text-center" style="background:#eaf2ff;font-size:.75rem;color:#856404">{{ '%.1f'|format(phrs) }}h</td>
+          <td style="background:#eaf2ff"></td>
+        </tr>
+        {% endfor %}
         {% endif %}
       {% endif %}
     {% endfor %}
@@ -218,6 +256,28 @@
 function toggleGroup(uid, group) {
   const rows = document.querySelectorAll('.util-detail-' + uid + '-' + group);
   const chev = document.getElementById('chev-' + uid + '-' + group);
+  const isHidden = rows.length > 0 && rows[0].style.display === 'none';
+  rows.forEach(r => {
+    r.style.display = isHidden ? '' : 'none';
+    // Collapse any open project rows when hiding the group
+    if (!isHidden) {
+      const catIdx = r.className.match(/util-detail-\S+/)?.[0]?.replace('util-detail-', '');
+    }
+  });
+  if (chev) chev.style.transform = isHidden ? 'rotate(90deg)' : '';
+  // Collapse all project rows when collapsing a group
+  if (!isHidden) {
+    rows.forEach(r => {
+      r.querySelectorAll?.('.util-chevron')?.forEach(c => c.style.transform = '');
+    });
+    document.querySelectorAll('[class*="util-proj-' + uid + '_' + (group === 'bill' ? 'b' : 'n') + '_"]')
+      .forEach(r => r.style.display = 'none');
+  }
+}
+
+function toggleProjects(catIdx) {
+  const rows = document.querySelectorAll('.util-proj-' + catIdx);
+  const chev = document.getElementById('chev-' + catIdx);
   const isHidden = rows.length > 0 && rows[0].style.display === 'none';
   rows.forEach(r => r.style.display = isHidden ? '' : 'none');
   if (chev) chev.style.transform = isHidden ? 'rotate(90deg)' : '';
