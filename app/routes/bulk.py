@@ -514,7 +514,7 @@ def _do_parse(grouped, live_by_user):
                 if not desc:
                     continue
                 combos.append(_make_combo(rzk, item))
-            user_projects[u['username']] = combos
+            user_projects[u['username']] = sorted(combos, key=lambda p: p['customer'].lower())
 
     except Exception:
         # Fall back: build user_projects from Excel data so the table still renders
@@ -529,7 +529,7 @@ def _do_parse(grouped, live_by_user):
                         seen_keys.add(key)
                         combos.append({'customer': r['customer'], 'project': r['project'],
                                        'q360id': r['q360id'], 'category': r['category']})
-            user_projects[u['username']] = combos
+            user_projects[u['username']] = sorted(combos, key=lambda p: p['customer'].lower())
 
     all_weeks = sorted(set(r['week_num'] for u in grouped for r in u['rows']))
     week_mondays = {w: _week_monday(w).strftime('%Y-%m-%d') for w in all_weeks}
