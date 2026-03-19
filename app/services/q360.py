@@ -285,10 +285,14 @@ class Q360Service:
             'jsonRequest': json.dumps(json_payload),
             'timebillno': timebill_no,
         }
+        import sys
+        print(f"\n[Q360 timebill_save] user={uid} task={task_number} timebillno={timebill_no}", flush=True)
+        print(f"  payload: {json.dumps(json_payload, indent=2)}", file=sys.stderr, flush=True)
         r7 = self.session.post(AJAX_URL,
                                headers={'Content-Type': 'application/x-www-form-urlencoded'},
                                data=urlencode(save_data, quote_via=quote_plus),
                                cookies=cookies, verify=False, timeout=25)
+        print(f"  response: {r7.text[:500]}", file=sys.stderr, flush=True)
         # Surface Q360-level errors (response body may contain error details)
         try:
             resp_data = json.loads(r7.text)

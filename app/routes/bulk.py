@@ -638,39 +638,53 @@ def review():
 @bp.route('/submit', methods=['POST'])
 @login_required
 def submit():
+    from flask import Response, stream_with_context
     entries_json = request.form.get('entries', '[]')
     try:
         entries = json.loads(entries_json)
     except Exception:
         return '<div class="alert alert-danger">Invalid submission data.</div>'
 
+    return Response(
+        stream_with_context(_submit_stream(entries)),
+        mimetype='text/event-stream',
+        headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
+    )
+
+
+def _submit_stream(entries):
+    import json as _json
     import traceback as _tb
-    try:
-        return _do_submit(entries)
-    except Exception:
-        return (f'<div class="alert alert-danger"><strong>Unexpected error — please report:'
-                f'</strong><pre style="font-size:.75rem;white-space:pre-wrap">'
-                f'{_tb.format_exc()}</pre></div>')
-
-
-def _do_submit(entries):
     from collections import defaultdict
-    svc = _svc()
-    results = []
+
+    def _evt(obj):
+        return f'data: {_json.dumps(obj)}\n\n'
+
+    try:
+        svc = _svc()
+    except Exception as e:
+        yield _evt({'type': 'error', 'html':
+                    f'<div class="alert alert-danger">Q360 login failed: {e}</div>'})
+        return
+
+    # Count submittable day-entries so the frontend knows the total
+    submittable = [
+        (e, d) for e in entries
+        if not e.get('needs_attention') and e.get('q360id')
+        for d in e.get('days', [])
+        if float(d.get('hours', 0)) > 0 and d.get('date')
+    ]
+    total = len(submittable)
+    yield _evt({'type': 'progress', 'phase': 'check', 'done': 0, 'total': total,
+                'msg': f'Checking existing hours\u2026'})
 
     # Fetch existing hours for all users/dates
     user_dates = defaultdict(set)
-    for e in entries:
-        if e.get('needs_attention') or not e.get('q360id'):
-            continue
-        for d in e.get('days', []):
-            if float(d.get('hours', 0)) > 0 and d.get('date'):
-                user_dates[e['username']].add(d['date'])
+    for e, d in submittable:
+        user_dates[e['username']].add(d['date'])
 
     existing = {}
     for username, dates in user_dates.items():
-        if not dates:
-            continue
         try:
             result = svc.get_hours(username, min(dates), max(dates))
             for tb in result.get('userReport', []):
@@ -680,7 +694,7 @@ def _do_submit(entries):
             pass
 
     # Recalculate time slots server-side based on row_num ordering
-    day_stacks = defaultdict(list)  # (username, date) -> [(row_num, entry, day_dict)]
+    day_stacks = defaultdict(list)
     for e in entries:
         if e.get('needs_attention') or not e.get('q360id'):
             continue
@@ -703,6 +717,9 @@ def _do_submit(entries):
             d['end_time'] = end.strftime('%H:%M')
             current = end
 
+    results = []
+    done = 0
+
     for e in entries:
         if e.get('needs_attention') or not e.get('q360id'):
             continue
@@ -717,23 +734,26 @@ def _do_submit(entries):
             if existing_h + hours > 8.0:
                 results.append({'employee': e.get('username', ''), 'day': d.get('day', ''),
                                 'hours': hours, 'success': None,
-                                'error': f'Skipped — {existing_h}h already logged, adding {hours}h would exceed 8h'})
+                                'error': f'Skipped \u2014 {existing_h}h already logged, adding {hours}h would exceed 8h'})
+                done += 1
+                yield _evt({'type': 'progress', 'phase': 'submit', 'done': done, 'total': total,
+                            'msg': f'Skipped \u2014 {e.get("username", "")} {d.get("day", "")} {d.get("date", "")}',
+                            'user': e.get('username', '')})
                 continue
             try:
-                date = d['date']
+                date_str = d['date']
                 start_time = d.get('start_time', '08:00')
                 end_time = d.get('end_time', '16:00')
-                sd = datetime.strptime(f"{date} {start_time}", '%Y-%m-%d %H:%M')
-                ed = datetime.strptime(f"{date} {end_time}", '%Y-%m-%d %H:%M')
+                sd = datetime.strptime(f"{date_str} {start_time}", '%Y-%m-%d %H:%M')
+                ed = datetime.strptime(f"{date_str} {end_time}", '%Y-%m-%d %H:%M')
                 if ed <= sd:
                     ed = sd + timedelta(hours=hours)
-                s = f"{date}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
-                e_str = f"{date}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
+                s = f"{date_str}%20{start_time[:2]}%3A{start_time[3:5]}%3A00.000"
+                e_str = f"{date_str}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
                 delta = ed - sd
                 logtime = f"{str(delta)[:-6]}.{str(delta)[-5:-3]}"
-                note = e.get('comment') or None
                 svc.submit_hours(
-                    e['q360id'], s, e_str, logtime, note,
+                    e['q360id'], s, e_str, logtime, e.get('comment') or None,
                     e.get('company', 'CONNEX TELECOMMUNICATIONS INC.'),
                     e['username'], e['category'],
                     task_data=e.get('q360_meta') or None,
@@ -743,8 +763,17 @@ def _do_submit(entries):
             except Exception as ex:
                 results.append({'employee': e.get('username', ''), 'day': d.get('day', ''),
                                 'hours': hours, 'success': False, 'error': str(ex)})
+            done += 1
+            yield _evt({'type': 'progress', 'phase': 'submit', 'done': done, 'total': total,
+                        'msg': f'Submitting \u2014 {e.get("username", "")} {d.get("day", "")} {d.get("date", "")}',
+                        'user': e.get('username', '')})
 
-    return render_template('bulk/_result.html', results=results)
+    try:
+        html = render_template('bulk/_result.html', results=results)
+        yield _evt({'type': 'complete', 'html': html})
+    except Exception as ex:
+        yield _evt({'type': 'error', 'html':
+                    f'<div class="alert alert-danger">Render error: {ex}</div>'})
 
 
 @bp.route('/save-username', methods=['POST'])
