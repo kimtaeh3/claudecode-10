@@ -217,7 +217,7 @@
                   onchange="onProjectChange(this)">
             <option value="">— select —</option>
             {% for proj in user_projs %}
-              {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') %}
+              {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') ~ ' — ' ~ proj.q360id %}
               {% set sel = (proj.q360id == row.q360id) %}
               {% if sel %}{% set ns2.matched = true %}{% endif %}
               <option value="{{ loop.index0 }}"
