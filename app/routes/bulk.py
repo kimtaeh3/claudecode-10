@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -279,7 +280,7 @@ def _parse_excel(file):
             s = str(v or '').strip()
             return '' if s == 'nan' else s
 
-        customer = _clean(row.get('Customer', ''))
+        customer = re.sub(r'^\d+\.', '', _clean(row.get('Customer', ''))).strip()
         project  = _clean(row.get('Project', ''))
         comment  = _clean(row.get('Comment', ''))
 
@@ -424,7 +425,6 @@ def parse():
 
 
 def _do_parse(grouped, live_by_user):
-    import re as _re
     # Determine which day columns have any data
     active_days = [d for d in DAY_COLS if any(
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
@@ -433,8 +433,8 @@ def _do_parse(grouped, live_by_user):
     def _match_score(excel_customer, excel_project, q360_desc):
         search = ' '.join(filter(None, [excel_customer, excel_project])).lower()
         desc = q360_desc.lower()
-        search = _re.sub(r'[^\w\s]', ' ', search)
-        desc   = _re.sub(r'[^\w\s]', ' ', desc)
+        search = re.sub(r'[^\w\s]', ' ', search)
+        desc   = re.sub(r'[^\w\s]', ' ', desc)
         words = [w for w in search.split() if len(w) > 2]
         if not words:
             return 0.0
@@ -474,29 +474,68 @@ def _do_parse(grouped, live_by_user):
                     r['project_guessed'] = True
                     r['suggested']       = True
 
-        # Build dropdown options from live Q360 data (resq_zoom_key as q360id)
+        # Build a pool of all non-admin project items from the whole team.
+        # Q360 projectscheduleno (resq_zoom_key) is global — the same task ID
+        # appears in every team member's list, so cross-user matching is safe.
+        all_pool = {}
+        for _u in grouped:
+            for rzk, item in live_by_user.get(_u['username'], {}).items():
+                if not Q360Service._is_admin_project(item.get('title', '')) and rzk not in all_pool:
+                    all_pool[rzk] = item
+
+        # Second pass: for users whose Q360 fetch returned nothing, match their
+        # Excel customer name against the pooled team project list.
+        for u in grouped:
+            if live_by_user.get(u['username'], {}):
+                continue  # already handled above
+            for r in u['rows']:
+                customer = r.get('customer', '').strip()
+                project  = r.get('project', '').strip()
+                if not customer and not project:
+                    continue
+                best_rzk, best_score = None, 0.0
+                for rzk, item in all_pool.items():
+                    score = _match_score(customer, project, item.get('description', ''))
+                    if score > best_score:
+                        best_score, best_rzk = score, rzk
+                if best_rzk and best_score > 0:
+                    item = all_pool[best_rzk]
+                    r['q360id']          = best_rzk
+                    r['customer']        = item.get('description', '').strip()
+                    r['category']        = item.get('category', '') or DEFAULT_CATEGORY
+                    r['needs_attention'] = False
+                    r['project_guessed'] = True
+                    r['suggested']       = True
+
+        # Build dropdown options. Users with no live data fall back to the pool
+        # so the project selector is still populated for manual overrides.
+        def _make_combo(rzk, item):
+            desc = item.get('description', '').strip()
+            cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
+            return {
+                'customer': desc, 'project': '', 'q360id': rzk, 'category': cat,
+                'q360_customerno':   item.get('customerno', ''),
+                'q360_description':  desc,
+                'q360_invoiceno':    item.get('invoiceno', ''),
+                'q360_opporno':      item.get('opporno', ''),
+                'q360_projectno':    item.get('projectno', ''),
+                'q360_company':      item.get('company', ''),
+                'q360_sitecity':     item.get('sitecity', ''),
+                'q360_projecttitle': item.get('projecttitle', ''),
+            }
+
         user_projects = {}
         for u in grouped:
             live = live_by_user.get(u['username'], {})
+            source = live if live else all_pool
             combos = []
-            for rzk, item in live.items():
+            for rzk, item in source.items():
                 if Q360Service._is_admin_project(item.get('title', '')):
                     continue
                 desc = item.get('description', '').strip()
                 if not desc:
                     continue
-                cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
-                combos.append({
-                    'customer': desc, 'project': '', 'q360id': rzk, 'category': cat,
-                    'q360_customerno':   item.get('customerno', ''),
-                    'q360_description':  desc,
-                    'q360_invoiceno':    item.get('invoiceno', ''),
-                    'q360_opporno':      item.get('opporno', ''),
-                    'q360_projectno':    item.get('projectno', ''),
-                    'q360_company':      item.get('company', ''),
-                    'q360_sitecity':     item.get('sitecity', ''),
-                    'q360_projecttitle': item.get('projecttitle', ''),
-                })
+                combos.append(_make_combo(rzk, item))
             user_projects[u['username']] = combos
 
     except Exception:

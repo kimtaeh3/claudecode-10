@@ -293,7 +293,7 @@
             <span class="badge bg-danger">⚠ missing Wk {{ row.week_num }}</span>
             <div style="font-size:.6rem;color:#888">from Wk {{ row.missing_guessed_from }}</div>
           {% elif row.needs_attention and not row.recommended_q360ids %}
-            <span class="badge bg-warning text-dark">⚠ No Q360 ID</span>
+            <span class="badge bg-warning text-dark">⚠ No Project Selected</span>
           {% elif row.suggested or row.project_guessed %}
             <span class="badge bg-info text-dark">⚡ guessed</span>
           {% elif row.needs_attention and row.recommended_q360ids | length > 1 %}
