@@ -91,7 +91,7 @@ def preview():
     task_label = f.get('task_label', task_number)
     entry = f.get('entry', 'Single')
     mode = f.get('mode', 'time')
-    note = f.get('note', 'POWERED BY Q360 AUTO APP')
+    note = f.get('note') or None
     company = f.get('company', 'CONNEX TELECOMMUNICATIONS INC.')
     include_weekends = f.get('weekends') == 'on'
     target_user = f.get('target_user') or session['user_id']

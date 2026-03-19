@@ -486,7 +486,17 @@ def _do_parse(grouped, live_by_user):
                 if not desc:
                     continue
                 cat = item.get('category', DEFAULT_CATEGORY) or DEFAULT_CATEGORY
-                combos.append({'customer': desc, 'project': '', 'q360id': rzk, 'category': cat})
+                combos.append({
+                    'customer': desc, 'project': '', 'q360id': rzk, 'category': cat,
+                    'q360_customerno':   item.get('customerno', ''),
+                    'q360_description':  desc,
+                    'q360_invoiceno':    item.get('invoiceno', ''),
+                    'q360_opporno':      item.get('opporno', ''),
+                    'q360_projectno':    item.get('projectno', ''),
+                    'q360_company':      item.get('company', ''),
+                    'q360_sitecity':     item.get('sitecity', ''),
+                    'q360_projecttitle': item.get('projecttitle', ''),
+                })
             user_projects[u['username']] = combos
 
     except Exception:
@@ -682,11 +692,12 @@ def _do_submit(entries):
                 e_str = f"{date}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
                 delta = ed - sd
                 logtime = f"{str(delta)[:-6]}.{str(delta)[-5:-3]}"
-                note = e.get('comment') or 'POWERED BY Q360 AUTO APP'
+                note = e.get('comment') or None
                 svc.submit_hours(
                     e['q360id'], s, e_str, logtime, note,
                     e.get('company', 'CONNEX TELECOMMUNICATIONS INC.'),
-                    e['username'], e['category']
+                    e['username'], e['category'],
+                    task_data=e.get('q360_meta') or None,
                 )
                 results.append({'employee': e.get('username', ''), 'day': d['day'],
                                 'hours': hours, 'success': True, 'error': None})

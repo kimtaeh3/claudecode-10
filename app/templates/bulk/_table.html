@@ -821,6 +821,19 @@ function applyProjectChoice(sel) {
       if (days.length === 0) return;
       const projSel = tr.querySelector('.project-field');
       const projLabel = projSel ? (projSel.options[projSel.selectedIndex]?.text || '').trim() : '';
+      // Find pre-fetched Q360 metadata so submit doesn't need to re-fetch projects
+      const userCombos = (window.USER_PROJECTS || {})[tr.dataset.username] || [];
+      const combo = userCombos.find(p => p.q360id === q360id) || {};
+      const q360Meta = q360id ? {
+        customerno:   combo.q360_customerno   || '',
+        description:  combo.q360_description  || '',
+        invoiceno:    combo.q360_invoiceno     || '',
+        opporno:      combo.q360_opporno       || '',
+        projectno:    combo.q360_projectno     || '',
+        company:      combo.q360_company       || '',
+        sitecity:     combo.q360_sitecity      || '',
+        projecttitle: combo.q360_projecttitle  || '',
+      } : null;
       rows.push({
         row_num: tr.dataset.rownum,
         username: tr.dataset.username,
@@ -830,6 +843,7 @@ function applyProjectChoice(sel) {
         needs_attention: !q360id,
         company: 'CONNEX TELECOMMUNICATIONS INC.',
         comment: '',
+        q360_meta: q360Meta,
         days,
       });
     });

@@ -160,7 +160,8 @@ class Q360Service:
 
     def submit_hours(self, task_number: str, start_date: str, end_date: str,
                      logtime: str, note: str, company: str,
-                     target_user_id: str = None, category: str = None) -> dict:
+                     target_user_id: str = None, category: str = None,
+                     task_data: dict = None) -> dict:
         uid = target_user_id or self.user_id
         cookies = {'cookies_are': 'working'}
         headers = {
@@ -172,39 +173,48 @@ class Q360Service:
             'Origin': BASE_URL,
         }
 
-        # Fetch projects list
-        today = datetime.today().strftime('%Y-%m-%d')
-        projects_payload = (
-            f'EndDate={today}&InclActivity=Y&InclAltRep=Y&InclCalls=Y&InclCallsCSR=Y'
-            f'&InclOppTasks=Y&InclOppor=Y&InclQuotes=Y&InclTasksAssign=Y&InclTasksResp=Y'
-            f'&_a=mytasklist_get&_pversion=d101&mobileflag=N&numdays=0&userid={uid}'
-        )
-        r4 = self.session.post(AJAX_URL, headers=headers, data=projects_payload,
-                               cookies=cookies, verify=False)
-        projects = {item['resq_zoom_key']: item for item in json.loads(r4.text)['data']}
-
-        # Open task to get category and parent project
-        open_payload = (
-            f'_a=pageload&_navkey=1646064679867&_pversion=d101'
-            f'&_referrer=action%3Dtask%26projectscheduleno%3D{task_number}%26_navkey%3D1646064679867'
-            f'&_type=data&action=task&projectscheduleno={task_number}'
-        )
-        r5 = self.session.post(AJAX_URL, headers=headers, data=open_payload,
-                               cookies=cookies, verify=False)
-        temp = json.loads(r5.text)
-
-        try:
-            parent_project_no = temp['data']['data']['recordSet']['task']['data'][0]['parentprojectscheduleno']
-        except (KeyError, IndexError):
+        if task_data:
+            # Use pre-fetched project metadata — avoids a session-scoped re-fetch
+            # that would return the admin's projects instead of the target user's.
+            tb = task_data
             parent_project_no = ''
+            project_category = category or ''
+        else:
+            # Fetch projects list (used by regular single-user Submit Hours)
+            today = datetime.today().strftime('%Y-%m-%d')
+            projects_payload = (
+                f'EndDate={today}&InclActivity=Y&InclAltRep=Y&InclCalls=Y&InclCallsCSR=Y'
+                f'&InclOppTasks=Y&InclOppor=Y&InclQuotes=Y&InclTasksAssign=Y&InclTasksResp=Y'
+                f'&_a=mytasklist_get&_pversion=d101&mobileflag=N&numdays=0&userid={uid}'
+            )
+            r4 = self.session.post(AJAX_URL, headers=headers, data=projects_payload,
+                                   cookies=cookies, verify=False)
+            projects = {item['resq_zoom_key']: item for item in json.loads(r4.text)['data']}
 
-        try:
-            project_category = temp['data']['data']['recordSet']['task']['data'][0]['timebillcategory']
-        except (KeyError, IndexError):
-            project_category = ''
+            # Open task to get category and parent project
+            open_payload = (
+                f'_a=pageload&_navkey=1646064679867&_pversion=d101'
+                f'&_referrer=action%3Dtask%26projectscheduleno%3D{task_number}%26_navkey%3D1646064679867'
+                f'&_type=data&action=task&projectscheduleno={task_number}'
+            )
+            r5 = self.session.post(AJAX_URL, headers=headers, data=open_payload,
+                                   cookies=cookies, verify=False)
+            temp = json.loads(r5.text)
 
-        if category:
-            project_category = category
+            try:
+                parent_project_no = temp['data']['data']['recordSet']['task']['data'][0]['parentprojectscheduleno']
+            except (KeyError, IndexError):
+                parent_project_no = ''
+
+            try:
+                project_category = temp['data']['data']['recordSet']['task']['data'][0]['timebillcategory']
+            except (KeyError, IndexError):
+                project_category = ''
+
+            if category:
+                project_category = category
+
+            tb = projects[task_number]
 
         # Create timebill
         now = datetime.today()
@@ -228,7 +238,6 @@ class Q360Service:
                           data=load_payload, cookies=cookies, verify=False)
 
         company_no = COMPANY_MAP.get(company.upper(), '01')
-        tb = projects[task_number]
         moddate = now.strftime('%Y-%m-%d %H:%M:%S.000')
         loaddate = now.strftime('%Y-%m-%d %H:%M:%S')
 
