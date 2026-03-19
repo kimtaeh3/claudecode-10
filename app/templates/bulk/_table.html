@@ -2,6 +2,32 @@
 <div class="alert alert-warning">No entries found in the file.</div>
 {% else %}
 
+{# Collect unique hidden projects (q360id starts with '59') across all users #}
+{% set ns_hidden = namespace(seen=[], items=[]) %}
+{% for user in grouped %}
+  {% for proj in user_projects.get(user.username, []) %}
+    {% if proj.q360id.startswith('59') and proj.q360id not in ns_hidden.seen %}
+      {% set _ = ns_hidden.seen.append(proj.q360id) %}
+      {% set _ = ns_hidden.items.append(proj) %}
+    {% endif %}
+  {% endfor %}
+{% endfor %}
+
+{% if ns_hidden.items %}
+<div class="mt-2 mb-1">
+  <a class="text-secondary small" style="cursor:pointer;text-decoration:none" data-bs-toggle="collapse" href="#hidden-projs-collapse">
+    <i class="bi bi-eye-slash me-1"></i>{{ ns_hidden.items|length }} project(s) hidden from dropdown ▾
+  </a>
+  <div class="collapse" id="hidden-projs-collapse">
+    <div class="mt-1 p-2 rounded border bg-light" style="font-size:.78rem">
+      {% for proj in ns_hidden.items | sort(attribute='customer') %}
+      <div class="text-muted">{{ proj.customer }} — <code>{{ proj.q360id }}</code></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <hr>
 <div class="mb-2">
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -217,12 +243,14 @@
                   onchange="onProjectChange(this)">
             <option value="">— select —</option>
             {% for proj in user_projs %}
-              {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') ~ ' — ' ~ proj.q360id %}
-              {% set sel = (proj.q360id == row.q360id) %}
-              {% if sel %}{% set ns2.matched = true %}{% endif %}
-              <option value="{{ loop.index0 }}"
-                      data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
-                      {% if sel %}selected{% endif %}>{{ lbl }}</option>
+              {% if not proj.q360id.startswith('59') %}
+                {% set lbl = proj.customer ~ (' — ' ~ proj.project if proj.project else '') ~ ' — ' ~ proj.q360id %}
+                {% set sel = (proj.q360id == row.q360id) %}
+                {% if sel %}{% set ns2.matched = true %}{% endif %}
+                <option value="{{ loop.index0 }}"
+                        data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
+                        {% if sel %}selected{% endif %}>{{ lbl }}</option>
+              {% endif %}
             {% endfor %}
             {# No __current__ fallback — live Q360 projects are always used #}
           </select>
