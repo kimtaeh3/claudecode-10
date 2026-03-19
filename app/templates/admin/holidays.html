@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Holidays{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <h4 class="mb-0">Ontario Statutory Holidays</h4>
+</div>
+
+<p class="text-muted small mb-3">
+  These dates are excluded from <strong>available work hours</strong> in Utilization calculations.
+  Dates observed on the nearest weekday when they fall on a weekend.
+</p>
+
+<form method="get" class="d-flex align-items-center gap-2 mb-4">
+  <label class="form-label mb-0 small">Year:</label>
+  <select name="year" class="form-select form-select-sm" style="width:auto" onchange="this.form.submit()">
+    {% for y in years %}
+    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<table class="table table-sm table-bordered" style="max-width:420px">
+  <thead class="table-dark">
+    <tr>
+      <th>Holiday</th>
+      <th>Date</th>
+      <th>Day</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d, name in holidays %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>{{ d.strftime('%B %-d, %Y') }}</td>
+      <td class="text-muted">{{ d.strftime('%A') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

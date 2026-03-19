@@ -64,8 +64,25 @@
       </th>
       {% endfor %}
       <th class="text-center" style="min-width:80px;background:#1a3a5c" title="Billable hrs / available work hrs">Util%</th>
+      <th class="text-center" style="min-width:72px;background:#1a3a5c" title="Total logged hrs / available work hrs">Logged%</th>
       <th class="text-center" style="min-width:72px;background:#1a3a5c">Total hrs</th>
       <th class="text-center" style="min-width:72px;background:#1a3a5c">Avg/Wk</th>
+    </tr>
+    {# ── Available work hours reference row ── #}
+    <tr style="background:#2c3e50;color:#adb5bd;font-size:.74rem">
+      <th style="position:sticky;left:0;z-index:3;background:#2c3e50;font-weight:500;padding:.25rem .5rem">Avail Hrs</th>
+      <th style="position:sticky;left:140px;z-index:3;background:#2c3e50;font-weight:400;font-style:italic;padding:.25rem .5rem">excl. holidays</th>
+      {% for wk in weeks %}
+      <th class="text-center" style="padding:.25rem .25rem;font-weight:600;color:{% if wk.avail > 0 %}#74b9ff{% else %}#6c757d{% endif %}">
+        {{ wk.avail|int }}h{% if wk.avail_raw > wk.avail %} <span style="color:#adb5bd;font-weight:400">({{ wk.avail_raw|int }}h)</span>{% endif %}
+      </th>
+      {% endfor %}
+      <th style="background:#1a3a5c;padding:.25rem"></th>
+      <th style="background:#1a3a5c;padding:.25rem"></th>
+      <th class="text-center fw-semibold" style="background:#1a3a5c;padding:.25rem .5rem;color:#74b9ff">
+        {{ total_avail|int }}h{% if total_avail_raw > total_avail %} <span style="color:#adb5bd;font-weight:400">({{ total_avail_raw|int }}h)</span>{% endif %}
+      </th>
+      <th style="background:#1a3a5c;padding:.25rem"></th>
     </tr>
   </thead>
   <tbody>
@@ -88,11 +105,18 @@
           {{ '%.1f'|format(h) if h > 0 else '—' }}
         </td>
       {% endfor %}
+      {% set logged_pct = (u.total / u.avail_hours * 100) if u.avail_hours > 0 else 0 %}
       <td class="text-center fw-bold" style="background:#eaf2ff" title="{{ '%.1f'|format(u.billable) }}h billable / {{ '%.0f'|format(u.avail_hours) }}h available">
         {% if u.util_pct >= 80 %}<span class="text-success">
         {% elif u.util_pct >= 60 %}<span class="text-warning">
         {% else %}<span class="text-danger">
         {% endif %}{{ '%.0f'|format(u.util_pct) }}%</span>
+      </td>
+      <td class="text-center fw-bold" style="background:#eaf2ff" title="{{ '%.1f'|format(u.total) }}h logged / {{ '%.0f'|format(u.avail_hours) }}h available">
+        {% if logged_pct >= 95 %}<span class="text-success">
+        {% elif logged_pct >= 75 %}<span class="text-warning">
+        {% else %}<span class="text-danger">
+        {% endif %}{{ '%.0f'|format(logged_pct) }}%</span>
       </td>
       <td class="text-center fw-bold" style="background:#eaf2ff">{{ '%.1f'|format(u.total) }}h</td>
       <td class="text-center" style="background:#eaf2ff">{{ '%.1f'|format(u.avg_per_week) }}h</td>
@@ -112,6 +136,7 @@
         {% set h = u.week_data.get(wk.key, {}).get('billable', 0) %}
         <td class="text-center text-success fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
       {% endfor %}
+      <td style="background:#eaf2ff"></td>
       <td style="background:#eaf2ff"></td>
       <td class="text-center text-success fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(u.billable) }}h</td>
       <td style="background:#eaf2ff"></td>
@@ -137,6 +162,7 @@
             <td class="text-center text-success" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
+          <td style="background:#eaf2ff"></td>
           <td class="text-center text-success fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
           <td style="background:#eaf2ff"></td>
         </tr>
@@ -149,6 +175,7 @@
             {% set h = u.week_data.get(wk.key, {}).get('cat_projects', {}).get(cat, {}).get(proj, 0) %}
             <td class="text-center" style="font-size:.74rem;color:#198754">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
+          <td style="background:#eaf2ff"></td>
           <td style="background:#eaf2ff"></td>
           <td class="text-center" style="background:#eaf2ff;font-size:.75rem;color:#198754">{{ '%.1f'|format(phrs) }}h</td>
           <td style="background:#eaf2ff"></td>
@@ -172,6 +199,7 @@
         {% set h = u.week_data.get(wk.key, {}).get('nonbillable', 0) %}
         <td class="text-center text-secondary fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
       {% endfor %}
+      <td style="background:#eaf2ff"></td>
       <td style="background:#eaf2ff"></td>
       <td class="text-center text-secondary fw-semibold" style="background:#eaf2ff">{{ '%.1f'|format(u.nonbillable) }}h</td>
       <td style="background:#eaf2ff"></td>
@@ -197,6 +225,7 @@
             <td class="text-center text-secondary" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
+          <td style="background:#eaf2ff"></td>
           <td class="text-center text-secondary" style="background:#eaf2ff">{{ '%.1f'|format(cat_total) }}h</td>
           <td style="background:#eaf2ff"></td>
         </tr>
@@ -210,6 +239,7 @@
             <td class="text-center" style="font-size:.74rem;color:#856404">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
+          <td style="background:#eaf2ff"></td>
           <td class="text-center" style="background:#eaf2ff;font-size:.75rem;color:#856404">{{ '%.1f'|format(phrs) }}h</td>
           <td style="background:#eaf2ff"></td>
         </tr>
@@ -220,7 +250,7 @@
 
     {# Spacer between users #}
     {% if not loop.last %}
-    <tr style="height:4px;background:#dee2e6"><td colspan="{{ 3 + weeks|length + 3 }}"></td></tr>
+    <tr style="height:4px;background:#dee2e6"><td colspan="{{ 3 + weeks|length + 4 }}"></td></tr>
     {% endif %}
   {% endfor %}
   </tbody>
@@ -229,8 +259,11 @@
   <tfoot class="table-dark" style="position:sticky;bottom:0;z-index:2">
     {% set total_all = users | sum(attribute='total') %}
     {% set total_bill = users | sum(attribute='billable') %}
-    {% set team_avail = total_avail * users|length %}
+    {% set team_avail_ns = namespace(h=0) %}
+    {% for u in users %}{% set team_avail_ns.h = team_avail_ns.h + u.avail_hours %}{% endfor %}
+    {% set team_avail = team_avail_ns.h %}
     {% set team_util = (total_bill / team_avail * 100) if team_avail > 0 else 0 %}
+    {% set team_logged_pct = (total_all / team_avail * 100) if team_avail > 0 else 0 %}
     <tr>
       <td style="position:sticky;left:0;background:#212529;z-index:3" class="fw-bold">Team Total</td>
       <td style="position:sticky;left:140px;background:#212529;z-index:3">
@@ -244,7 +277,8 @@
           {{ '%.1f'|format(wk_total.h) if wk_total.h > 0 else '—' }}
         </td>
       {% endfor %}
-      <td class="text-center fw-bold" style="background:#1a3a5c" title="Team billable / (available × headcount)">{{ '%.0f'|format(team_util) }}%</td>
+      <td class="text-center fw-bold" style="background:#1a3a5c" title="Team billable / available">{{ '%.0f'|format(team_util) }}%</td>
+      <td class="text-center fw-bold" style="background:#1a3a5c" title="Team total logged / available">{{ '%.0f'|format(team_logged_pct) }}%</td>
       <td class="text-center fw-bold" style="background:#1a3a5c">{{ '%.1f'|format(total_all) }}h</td>
       <td class="text-center" style="background:#1a3a5c">{{ users|length }} user{{ 's' if users|length != 1 }}</td>
     </tr>

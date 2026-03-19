@@ -1,5 +1,7 @@
+from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify
 from app.routes.auth import login_required
+from app.routes.forecast import ontario_holidays_named
 from app.db import get_db
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -107,3 +109,12 @@ def delete_project(entry_id):
     db.commit()
     entries = db.execute('SELECT * FROM nonbillable_project ORDER BY name').fetchall()
     return render_template('admin/_projects_table.html', entries=entries)
+
+
+@bp.route('/holidays')
+@login_required
+def holidays():
+    year = request.args.get('year', type=int, default=date.today().year)
+    hols = ontario_holidays_named(year)
+    years = list(range(date.today().year - 2, date.today().year + 3))
+    return render_template('admin/holidays.html', holidays=hols, year=year, years=years)

@@ -37,13 +37,17 @@
           <a class="nav-link {% if request.endpoint == 'forecast.index' %}active{% endif %}"
              href="{{ url_for('forecast.index') }}">Utilization</a>
         </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'admin.users' %}active{% endif %}"
-             href="{{ url_for('admin.users') }}">Team</a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'admin.projects' %}active{% endif %}"
-             href="{{ url_for('admin.projects') }}">Project Codes</a>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint in ('admin.users', 'admin.projects', 'admin.holidays') %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown">Settings</a>
+          <ul class="dropdown-menu dropdown-menu-dark">
+            <li><a class="dropdown-item {% if request.endpoint == 'admin.users' %}active{% endif %}"
+                   href="{{ url_for('admin.users') }}">Team</a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'admin.projects' %}active{% endif %}"
+                   href="{{ url_for('admin.projects') }}">Project Codes</a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'admin.holidays' %}active{% endif %}"
+                   href="{{ url_for('admin.holidays') }}">Holidays</a></li>
+          </ul>
         </li>
       </ul>
       <span class="navbar-text me-3 text-secondary">{{ session.user_id }}</span>

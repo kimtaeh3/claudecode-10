@@ -93,12 +93,49 @@ def _available_hours(start_str: str, end_str: str, holidays: set) -> float:
     return hours
 
 
-def _week_available_hours(week_key: str, range_start: str, range_end: str,
-                           holidays: set) -> float:
-    """Available hours for a single ISO week, clipped to [range_start, range_end]."""
-    yr, wn = week_key.split('-W')
+def ontario_holidays_named(year: int) -> list:
+    """Return sorted list of (date, name) for Ontario statutory holidays."""
+    easter = _easter_sunday(year)
+    vic = _nth_weekday(year, 5, 0, 1)
+    if vic > date(year, 5, 25):
+        vic -= timedelta(weeks=1)
+    hols = [
+        (_observed(date(year, 1, 1)),       "New Year's Day"),
+        (_nth_weekday(year, 2, 0, 3),        "Family Day"),
+        (easter - timedelta(days=2),         "Good Friday"),
+        (vic,                                "Victoria Day"),
+        (_observed(date(year, 7, 1)),        "Canada Day"),
+        (_nth_weekday(year, 9, 0, 1),        "Labour Day"),
+        (_nth_weekday(year, 10, 0, 2),       "Thanksgiving"),
+        (_observed(date(year, 12, 25)),      "Christmas Day"),
+        (_observed(date(year, 12, 26)),      "Boxing Day"),
+    ]
+    return sorted(hols, key=lambda x: x[0])
+
+
+def _week_bounds(week_key: str):
+    """Return (monday, sunday) for the week, clipped to the key's year boundary.
+
+    strftime('%Y-W%W') splits year-boundary weeks across two keys (e.g. 2025-W52
+    covers Dec 29–31 and 2026-W00 covers Jan 1–4 for the same Mon–Sun span).
+    Clipping to the key's year ensures each key only counts its own days.
+    """
+    yr_str, wn = week_key.split('-W')
+    yr = int(yr_str)
     monday = datetime.strptime(f'{yr}-{int(wn)}-1', '%Y-%W-%w').date()
     sunday = monday + timedelta(days=6)
+    # Clip to the key's calendar year
+    if monday.year < yr:
+        monday = date(yr, 1, 1)
+    if sunday.year > yr:
+        sunday = date(yr, 12, 31)
+    return monday, sunday
+
+
+def _week_available_hours(week_key: str, range_start: str, range_end: str,
+                           holidays: set) -> float:
+    """Available hours for a single week key, clipped to [range_start, range_end]."""
+    monday, sunday = _week_bounds(week_key)
     ws = max(monday, date.fromisoformat(range_start))
     we = min(sunday, date.fromisoformat(range_end))
     if ws > we:
@@ -107,8 +144,8 @@ def _week_available_hours(week_key: str, range_start: str, range_end: str,
 
 
 def _week_monday(week_key: str) -> datetime:
-    yr, wn = week_key.split('-W')
-    return datetime.strptime(f'{yr}-{int(wn)}-1', '%Y-%W-%w')
+    monday, _ = _week_bounds(week_key)
+    return datetime(monday.year, monday.month, monday.day)
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
@@ -233,7 +270,8 @@ def index():
             label = wk
             date_label = ''
         avail = _week_available_hours(wk, start, end, holidays)
-        weeks.append({'key': wk, 'label': label, 'date': date_label, 'avail': avail})
+        avail_raw = _week_available_hours(wk, start, end, set())
+        weeks.append({'key': wk, 'label': label, 'date': date_label, 'avail': avail, 'avail_raw': avail_raw})
 
     # Collect all categories seen across all users/weeks
     all_cats = sorted({cat for u in user_weeks.values() for wk in u.values() for cat in wk['cats']})
@@ -277,11 +315,13 @@ def index():
             'cat_proj_totals': {c: dict(p) for c, p in cat_proj_totals.items()},
         })
 
+    total_avail_raw = _available_hours(start, end, set())
     return render_template('forecast/index.html',
                            users=users, weeks=weeks,
                            teams=teams, team_filter=team_filter,
                            start=start, end=end,
                            total_avail=total_avail,
+                           total_avail_raw=total_avail_raw,
                            all_cats=all_cats,
                            nb_projects=nb_projects,
                            holidays=sorted(h.isoformat() for h in holidays))
