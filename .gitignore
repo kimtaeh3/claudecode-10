@@ -7,6 +7,8 @@ env
 /env
 venv/
 q360test_db.db
+q360.db
+*.db
 dbtestseed.py
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -10,18 +10,11 @@ def create_app():
 
     db.init_app(app)
 
-    # Ensure username_map table exists (safe migration)
+    # Auto-initialize DB from schema.sql on every startup (all CREATE TABLE IF NOT EXISTS — idempotent)
     with app.app_context():
-        from app.db import get_db as _get_db
-        _get_db().execute(
-            'CREATE TABLE IF NOT EXISTS username_map '
-            '(employee_name TEXT PRIMARY KEY, q360_username TEXT NOT NULL)'
-        )
-        _get_db().execute(
-            'CREATE TABLE IF NOT EXISTS nonbillable_project '
-            '(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE)'
-        )
-        # Default non-billable project patterns
+        from app.db import init_db as _init_db, get_db as _get_db
+        _init_db()
+        # Default non-billable project pattern
         _get_db().execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"
         )

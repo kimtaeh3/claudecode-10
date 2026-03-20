@@ -345,10 +345,12 @@ def parse():
     date_filter = request.form.get('date_filter', 'month')
     try:
         grouped = _parse_excel(file)
+        grouped = _apply_username_corrections(grouped)
+        grouped = _filter_by_date(grouped, date_filter)
     except Exception as e:
-        return f'<div class="alert alert-danger">Failed to parse file: {e}</div>'
-    grouped = _apply_username_corrections(grouped)
-    grouped = _filter_by_date(grouped, date_filter)
+        import traceback as _tb2
+        return (f'<div class="alert alert-danger">Failed to parse file: {e}'
+                f'<pre style="font-size:.75rem;white-space:pre-wrap">{_tb2.format_exc()}</pre></div>')
     if not grouped:
         return '<div class="alert alert-warning">No entries found for the selected date range.</div>'
 
@@ -364,14 +366,19 @@ def parse():
                         f'<div class="alert alert-danger">Q360 login failed: {e}</div>'})
             return
 
-        usernames = list({u['username'] for u in grouped})
-        total = len(usernames)
-        live_by_user = {}
+        try:
+            usernames = list({u['username'] for u in grouped})
+            total = len(usernames)
+            live_by_user = {}
 
-        # Build name lookup: username → "Full Name (username)" or just username
-        db = get_db()
-        name_rows = db.execute('SELECT username, name FROM team_member').fetchall()
-        name_map = {r['username']: r['name'] for r in name_rows if r['name']}
+            # Build name lookup: username → "Full Name (username)" or just username
+            db = get_db()
+            name_rows = db.execute('SELECT username, name FROM team_member').fetchall()
+            name_map = {r['username']: r['name'] for r in name_rows if r['name']}
+        except Exception as e:
+            yield _evt({'type': 'error', 'html':
+                        f'<div class="alert alert-danger">Initialisation error: {_tb.format_exc()}</div>'})
+            return
 
         def _display_user(un):
             n = name_map.get(un, '')
