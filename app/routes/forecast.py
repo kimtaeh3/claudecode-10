@@ -273,6 +273,10 @@ def index():
         avail_raw = _week_available_hours(wk, start, end, set())
         weeks.append({'key': wk, 'label': label, 'date': date_label, 'avail': avail, 'avail_raw': avail_raw})
 
+    # Sum of per-week values — matches exactly what's shown in the Avail Hrs row
+    weeks_avail = sum(w['avail'] for w in weeks)       # blue numbers (excl. holidays)
+    weeks_avail_raw = sum(w['avail_raw'] for w in weeks)  # bracket numbers (incl. holidays)
+
     # Collect all categories seen across all users/weeks
     all_cats = sorted({cat for u in user_weeks.values() for wk in u.values() for cat in wk['cats']})
 
@@ -284,9 +288,10 @@ def index():
         total_bill = sum(w['billable'] for w in wdata.values())
         total_nonbill = sum(w['nonbillable'] for w in wdata.values())
         weeks_worked = len(wdata)
-        # Available hours = filter-range available work hours (matches Avail Hrs row)
-        user_avail = total_avail
-        util_pct = (total_bill / user_avail * 100) if user_avail > 0 else 0
+        # Util%   = billable / blue total (excl. holidays)
+        # Logged% = total    / bracket total (incl. holidays)
+        util_pct = (total_bill / weeks_avail * 100) if weeks_avail > 0 else 0
+        logged_pct = (total_all / weeks_avail_raw * 100) if weeks_avail_raw > 0 else 0
         avg_per_week = (total_all / weeks_worked) if weeks_worked > 0 else 0
         # Per-category and per-category-project totals across all weeks
         cat_totals = defaultdict(float)
@@ -306,9 +311,10 @@ def index():
             'billable': total_bill,
             'nonbillable': total_nonbill,
             'util_pct': util_pct,
+            'logged_pct': logged_pct,
             'avg_per_week': avg_per_week,
             'weeks_worked': weeks_worked,
-            'avail_hours': user_avail,
+            'avail_hours': weeks_avail,
             'cat_totals': dict(cat_totals),
             'cat_proj_totals': {c: dict(p) for c, p in cat_proj_totals.items()},
         })

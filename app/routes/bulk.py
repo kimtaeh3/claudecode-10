@@ -369,6 +369,7 @@ def parse():
         live_by_user = {}
 
         # Build name lookup: username → "Full Name (username)" or just username
+        db = get_db()
         name_rows = db.execute('SELECT username, name FROM team_member').fetchall()
         name_map = {r['username']: r['name'] for r in name_rows if r['name']}
 
@@ -396,7 +397,6 @@ def parse():
 
         # Upsert team members: add any new usernames from the upload
         try:
-            db = get_db()
             admin_row = db.execute(
                 'SELECT team FROM team_member WHERE username = ?', (session['user_id'],)
             ).fetchone()
