@@ -14,11 +14,18 @@ def create_app():
     with app.app_context():
         from app.db import init_db as _init_db, get_db as _get_db
         _init_db()
+        _db = _get_db()
+        # Safe column migrations — add columns that may not exist in older DBs
+        _existing = {r[1] for r in _db.execute('PRAGMA table_info(team_member)').fetchall()}
+        if 'name' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+        if 'email' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN email TEXT")
         # Default non-billable project pattern
-        _get_db().execute(
+        _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"
         )
-        _get_db().commit()
+        _db.commit()
 
     from app.routes import auth, hours, forecast, admin, bulk
     app.register_blueprint(auth.bp)
