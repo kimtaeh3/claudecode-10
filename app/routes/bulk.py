@@ -552,18 +552,36 @@ def _do_parse(grouped, live_by_user):
                 'q360_projecttitle': item.get('projecttitle', ''),
             }
 
+        # Non-billable descriptions that should appear only once (highest Q360 ID wins)
+        _NON_BILL_PREFIXES = (
+            'ADMINISTRATION', 'ON-CALL', 'PERSONAL TIME-OFF',
+            'STATUTORY HOLIDAY', 'TRAINING', 'VACATION',
+        )
+
+        def _is_nonbill(desc):
+            d = desc.upper()
+            return any(d.startswith(p) for p in _NON_BILL_PREFIXES)
+
         user_projects = {}
         for u in grouped:
             live = live_by_user.get(u['username'], {})
             source = live if live else all_pool
-            combos = []
+            billable_combos = []
+            nonbill_best = {}  # description → (rzk, item) keeping highest numeric rzk
             for rzk, item in source.items():
                 if Q360Service._is_admin_project(item.get('title', '')):
                     continue
                 desc = item.get('description', '').strip()
                 if not desc:
                     continue
-                combos.append(_make_combo(rzk, item))
+                if _is_nonbill(desc):
+                    key = desc.upper()
+                    cur = nonbill_best.get(key)
+                    if cur is None or int(rzk) > int(cur[0]):
+                        nonbill_best[key] = (rzk, item)
+                else:
+                    billable_combos.append(_make_combo(rzk, item))
+            combos = billable_combos + [_make_combo(rzk, item) for rzk, item in nonbill_best.values()]
             user_projects[u['username']] = sorted(combos, key=lambda p: p['customer'].lower())
 
     except Exception:
@@ -706,10 +724,19 @@ def _submit_stream(entries):
     yield _evt({'type': 'progress', 'phase': 'check', 'done': 0, 'total': total,
                 'msg': f'Checking existing hours\u2026'})
 
-    # Fetch existing hours for all users/dates
+    # Pre-fetch projects and existing hours for each unique user (one call each, not per entry)
     user_dates = defaultdict(set)
+    usernames_needed = set()
     for e, d in submittable:
         user_dates[e['username']].add(d['date'])
+        usernames_needed.add(e['username'])
+
+    user_projects_cache = {}
+    for username in usernames_needed:
+        try:
+            user_projects_cache[username] = svc.get_projects(username)
+        except Exception:
+            user_projects_cache[username] = {}
 
     existing = {}
     for username, dates in user_dates.items():
@@ -780,10 +807,12 @@ def _submit_stream(entries):
                 e_str = f"{date_str}%20{end_time[:2]}%3A{end_time[3:5]}%3A00.000"
                 delta = ed - sd
                 logtime = f"{delta.total_seconds() / 3600:.2f}"
+                task_data = user_projects_cache.get(e['username'], {}).get(e['q360id'])
                 svc.submit_hours(
                     e['q360id'], s, e_str, logtime, e.get('comment') or None,
                     e.get('company', 'CONNEX TELECOMMUNICATIONS INC.'),
                     e['username'], e['category'],
+                    task_data=task_data,
                 )
                 results.append({'employee': e.get('username', ''), 'day': d['day'],
                                 'hours': hours, 'success': True, 'error': None})
