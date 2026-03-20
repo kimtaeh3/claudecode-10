@@ -50,9 +50,23 @@ def _observed(d: date) -> date:
     return d
 
 
+def _christmas_boxing(year: int) -> tuple:
+    """Return observed (christmas, boxing_day) dates, handling collision.
+    When Boxing Day's normal observed date would land on Christmas Day's
+    observed date (e.g. 2026: Fri/Sat), Boxing Day shifts to Monday."""
+    christmas = _observed(date(year, 12, 25))
+    boxing_raw = date(year, 12, 26)
+    boxing = _observed(boxing_raw)
+    if boxing == christmas:
+        # Find next Monday
+        boxing = christmas + timedelta(days=(7 - christmas.weekday()) % 7 or 7)
+    return christmas, boxing
+
+
 def ontario_holidays(year: int) -> set:
     """Return set of Ontario statutory holiday dates for the given year."""
     easter = _easter_sunday(year)
+    christmas, boxing = _christmas_boxing(year)
     holidays = {
         _observed(date(year, 1, 1)),           # New Year's Day
         _nth_weekday(year, 2, 0, 3),           # Family Day (3rd Mon Feb)
@@ -63,8 +77,8 @@ def ontario_holidays(year: int) -> set:
         _observed(date(year, 7, 1)),           # Canada Day
         _nth_weekday(year, 9, 0, 1),           # Labour Day (1st Mon Sep)
         _nth_weekday(year, 10, 0, 2),          # Thanksgiving (2nd Mon Oct)
-        _observed(date(year, 12, 25)),         # Christmas Day
-        _observed(date(year, 12, 26)),         # Boxing Day
+        christmas,
+        boxing,
     }
     return holidays
 
@@ -99,6 +113,7 @@ def ontario_holidays_named(year: int) -> list:
     vic = _nth_weekday(year, 5, 0, 1)
     if vic > date(year, 5, 25):
         vic -= timedelta(weeks=1)
+    christmas, boxing = _christmas_boxing(year)
     hols = [
         (_observed(date(year, 1, 1)),       "New Year's Day"),
         (_nth_weekday(year, 2, 0, 3),        "Family Day"),
@@ -107,8 +122,8 @@ def ontario_holidays_named(year: int) -> list:
         (_observed(date(year, 7, 1)),        "Canada Day"),
         (_nth_weekday(year, 9, 0, 1),        "Labour Day"),
         (_nth_weekday(year, 10, 0, 2),       "Thanksgiving"),
-        (_observed(date(year, 12, 25)),      "Christmas Day"),
-        (_observed(date(year, 12, 26)),      "Boxing Day"),
+        (christmas,                          "Christmas Day"),
+        (boxing,                             "Boxing Day"),
     ]
     return sorted(hols, key=lambda x: x[0])
 
