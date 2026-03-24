@@ -29,6 +29,7 @@ def add_user():
     name = request.form.get('name', '').strip()
     team = request.form['team'].strip()
     email = request.form.get('email', '').strip()
+    member_type = request.form.get('member_type', 'Employee (100%)').strip()
     db = get_db()
     if not username or not team:
         if request.headers.get('HX-Request'):
@@ -39,8 +40,8 @@ def add_user():
     existing = db.execute('SELECT id FROM team_member WHERE username = ?', (username,)).fetchone()
     if existing:
         return ('Username already exists', 409)
-    db.execute('INSERT INTO team_member (username, name, team, email) VALUES (?, ?, ?, ?)',
-               (username, name, team, email or None))
+    db.execute('INSERT INTO team_member (username, name, team, email, member_type) VALUES (?, ?, ?, ?, ?)',
+               (username, name, team, email or None, member_type))
     db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
@@ -55,10 +56,11 @@ def edit_user(member_id):
     name = request.form.get('name', '').strip()
     team = request.form.get('team', '').strip()
     email = request.form.get('email', '').strip()
+    member_type = request.form.get('member_type', 'Employee (100%)').strip()
     db = get_db()
     if username and team:
-        db.execute('UPDATE team_member SET username=?, name=?, team=?, email=? WHERE id=?',
-                   (username, name, team, email or None, member_id))
+        db.execute('UPDATE team_member SET username=?, name=?, team=?, email=?, member_type=? WHERE id=?',
+                   (username, name, team, email or None, member_type, member_id))
         db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()

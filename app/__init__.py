@@ -21,6 +21,8 @@ def create_app():
             _db.execute("ALTER TABLE team_member ADD COLUMN name TEXT NOT NULL DEFAULT ''")
         if 'email' not in _existing:
             _db.execute("ALTER TABLE team_member ADD COLUMN email TEXT")
+        if 'member_type' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN member_type TEXT NOT NULL DEFAULT 'Employee (100%)'")
         # Default non-billable project pattern
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"

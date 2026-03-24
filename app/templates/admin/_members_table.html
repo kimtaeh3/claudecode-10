@@ -1,6 +1,6 @@
 <table class="table table-sm table-hover">
   <thead class="table-light">
-    <tr><th>Name</th><th>Username</th><th>Team</th><th>Email</th><th></th></tr>
+    <tr><th>Name</th><th>Username</th><th>Team</th><th>Type</th><th>Email</th><th></th></tr>
   </thead>
   <tbody>
     {% for m in members %}
@@ -8,10 +8,11 @@
       <td>{{ m.name or '—' }}</td>
       <td>{{ m.username }}</td>
       <td>{{ m.team }}</td>
+      <td>{{ m.member_type or 'Employee (100%)' }}</td>
       <td>{{ m.email or '—' }}</td>
       <td class="text-end" style="white-space:nowrap">
         <button class="btn btn-outline-secondary btn-sm me-1"
-                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }})'>
+                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }})'>
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn btn-danger btn-sm"
@@ -23,7 +24,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="text-muted text-center">No members yet.</td></tr>
+    <tr><td colspan="6" class="text-muted text-center">No members yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -51,6 +52,14 @@
           <input type="text" class="form-control form-control-sm" id="edit-member-team" placeholder="Team name">
         </div>
         <div class="mb-2">
+          <label class="form-label small mb-1">Type</label>
+          <select class="form-select form-select-sm" id="edit-member-type">
+            <option value="Employee (100%)">Employee (100%)</option>
+            <option value="Employee (50%)">Employee (50%)</option>
+            <option value="Manager (50%)">Manager (50%)</option>
+          </select>
+        </div>
+        <div class="mb-2">
           <label class="form-label small mb-1">Email</label>
           <input type="email" class="form-control form-control-sm" id="edit-member-email" placeholder="Email (optional)">
         </div>
@@ -66,12 +75,13 @@
 <script>
 let _editMemberModal = null;
 
-function openEditMemberModal(id, username, name, team, email) {
+function openEditMemberModal(id, username, name, team, email, memberType) {
   document.getElementById('edit-member-id').value = id;
   document.getElementById('edit-member-name').value = name || '';
   document.getElementById('edit-member-username').value = username;
   document.getElementById('edit-member-team').value = team;
   document.getElementById('edit-member-email').value = email || '';
+  document.getElementById('edit-member-type').value = memberType || 'Employee (100%)';
   if (!_editMemberModal) {
     _editMemberModal = new bootstrap.Modal(document.getElementById('editMemberModal'));
   }
@@ -81,10 +91,11 @@ function openEditMemberModal(id, username, name, team, email) {
 function saveEditMember() {
   const id = document.getElementById('edit-member-id').value;
   const fd = new FormData();
-  fd.append('name',     document.getElementById('edit-member-name').value.trim());
-  fd.append('username', document.getElementById('edit-member-username').value.trim());
-  fd.append('team',     document.getElementById('edit-member-team').value.trim());
-  fd.append('email',    document.getElementById('edit-member-email').value.trim());
+  fd.append('name',        document.getElementById('edit-member-name').value.trim());
+  fd.append('username',    document.getElementById('edit-member-username').value.trim());
+  fd.append('team',        document.getElementById('edit-member-team').value.trim());
+  fd.append('email',       document.getElementById('edit-member-email').value.trim());
+  fd.append('member_type', document.getElementById('edit-member-type').value);
   fetch('/admin/users/edit/' + id, { method: 'POST', body: fd,
     headers: { 'HX-Request': 'true' } })
     .then(r => r.text())
