@@ -49,9 +49,15 @@ def add_user():
                                    member_stats=_member_stats(db),
                                    error='Username and team are required.')
         return redirect(url_for('admin.users'))
-    existing = db.execute('SELECT id FROM team_member WHERE username = ?', (username,)).fetchone()
+    existing = db.execute(
+        'SELECT id, username, name FROM team_member '
+        'WHERE username = ? OR (name != "" AND LOWER(name) = LOWER(?))',
+        (username, name)
+    ).fetchone()
     if existing:
-        return ('Username already exists', 409)
+        if existing['username'].lower() == username.lower():
+            return ('Username already exists', 409)
+        return (f'Name already exists (as {existing["username"]})', 409)
     db.execute('INSERT INTO team_member (username, name, team, email, member_type) VALUES (?, ?, ?, ?, ?)',
                (username, name, team, email or None, member_type))
     db.commit()

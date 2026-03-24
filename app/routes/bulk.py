@@ -419,7 +419,9 @@ def parse():
                     continue
                 employee_name = u.get('employee', '') or ''
                 existing = db.execute(
-                    'SELECT id FROM team_member WHERE username = ?', (username,)
+                    'SELECT id FROM team_member WHERE username = ? OR '
+                    '(name != "" AND LOWER(name) = LOWER(?))',
+                    (username, employee_name)
                 ).fetchone()
                 if not existing:
                     db.execute(
