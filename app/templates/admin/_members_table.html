@@ -1,15 +1,26 @@
 <table class="table table-sm table-hover">
   <thead class="table-light">
-    <tr><th>Name</th><th>Username</th><th>Team</th><th>Type</th><th>Email</th><th></th></tr>
+    <tr><th>Name</th><th>Username</th><th>Team</th><th>Type</th><th>Email</th><th>Last Updated</th><th>Data Range in DB</th><th></th></tr>
   </thead>
   <tbody>
     {% for m in members %}
     <tr>
+      {% set st = member_stats.get(m.username) %}
       <td>{{ m.name or '—' }}</td>
       <td>{{ m.username }}</td>
       <td>{{ m.team }}</td>
       <td>{{ m.member_type or 'Employee (100%)' }}</td>
       <td>{{ m.email or '—' }}</td>
+      <td class="text-muted small" style="white-space:nowrap">
+        {% if st and st.last_updated %}
+          {{ st.last_updated[:16] }}
+        {% else %}—{% endif %}
+      </td>
+      <td class="text-muted small" style="white-space:nowrap">
+        {% if st and st.date_min %}
+          {{ st.date_min }} → {{ st.date_max }}
+        {% else %}—{% endif %}
+      </td>
       <td class="text-end" style="white-space:nowrap">
         <button class="btn btn-outline-secondary btn-sm me-1"
                 onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }})'>
@@ -24,7 +35,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="6" class="text-muted text-center">No members yet.</td></tr>
+    <tr><td colspan="8" class="text-muted text-center">No members yet.</td></tr>
     {% endfor %}
   </tbody>
 </table>

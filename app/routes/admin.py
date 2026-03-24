@@ -7,6 +7,15 @@ from app.db import get_db
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
+def _member_stats(db):
+    rows = db.execute(
+        'SELECT username, MAX(submitted_at) as last_updated, '
+        'MIN(date) as date_min, MAX(date) as date_max '
+        'FROM bulk_hours GROUP BY username'
+    ).fetchall()
+    return {r['username']: r for r in rows}
+
+
 @bp.route('/users')
 @login_required
 def users():
@@ -19,7 +28,9 @@ def users():
             if t:
                 seen.add(t)
     teams = ['All'] + sorted(t for t in seen if t != 'All')
-    return render_template('admin/users.html', members=members, teams=teams)
+
+    return render_template('admin/users.html', members=members, teams=teams,
+                           member_stats=_member_stats(db))
 
 
 @bp.route('/users/add', methods=['POST'])
@@ -35,6 +46,7 @@ def add_user():
         if request.headers.get('HX-Request'):
             members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
             return render_template('admin/_members_table.html', members=members,
+                                   member_stats=_member_stats(db),
                                    error='Username and team are required.')
         return redirect(url_for('admin.users'))
     existing = db.execute('SELECT id FROM team_member WHERE username = ?', (username,)).fetchone()
@@ -45,7 +57,8 @@ def add_user():
     db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
-        return render_template('admin/_members_table.html', members=members)
+        return render_template('admin/_members_table.html', members=members,
+                               member_stats=_member_stats(db))
     return redirect(url_for('admin.users'))
 
 
@@ -64,7 +77,8 @@ def edit_user(member_id):
         db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
-        return render_template('admin/_members_table.html', members=members)
+        return render_template('admin/_members_table.html', members=members,
+                               member_stats=_member_stats(db))
     return redirect(url_for('admin.users'))
 
 
@@ -76,7 +90,8 @@ def delete_user(member_id):
     db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
-        return render_template('admin/_members_table.html', members=members)
+        return render_template('admin/_members_table.html', members=members,
+                               member_stats=_member_stats(db))
     return redirect(url_for('admin.users'))
 
 
