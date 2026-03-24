@@ -55,8 +55,8 @@
        style="font-size:.82rem;white-space:nowrap">
   <thead class="table-dark" style="position:sticky;top:0;z-index:2">
     <tr>
-      <th style="min-width:140px;position:sticky;left:0;z-index:3;background:#212529">Employee</th>
-      <th style="width:100px;position:sticky;left:140px;z-index:3;background:#212529">Type</th>
+      <th style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;z-index:3;background:#212529;overflow:hidden">Employee</th>
+      <th style="width:100px;min-width:100px;max-width:100px;position:sticky;left:140px;z-index:3;background:#212529;overflow:hidden">Type</th>
       {% for wk in weeks %}
       <th class="text-center" style="min-width:60px" title="{{ wk.date }} — {{ wk.avail|int }}h avail">
         {{ wk.label }}<br>
@@ -75,8 +75,8 @@
       {% set avail_sum.raw = avail_sum.raw + wk.avail_raw %}
     {% endfor %}
     <tr style="background:#2c3e50;color:#adb5bd;font-size:.74rem">
-      <th style="position:sticky;left:0;z-index:3;background:#2c3e50;font-weight:500;padding:.25rem .5rem">Avail Hrs</th>
-      <th style="position:sticky;left:140px;z-index:3;background:#2c3e50;font-weight:400;font-style:italic;padding:.25rem .5rem">excl. holidays</th>
+      <th style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;z-index:3;background:#2c3e50;font-weight:500;padding:.25rem .5rem;overflow:hidden">Avail Hrs</th>
+      <th style="width:100px;min-width:100px;max-width:100px;position:sticky;left:140px;z-index:3;background:#2c3e50;font-weight:400;font-style:italic;padding:.25rem .5rem;overflow:hidden">excl. holidays</th>
       {% for wk in weeks %}
       <th class="text-center" style="padding:.25rem .25rem;font-weight:600;color:{% if wk.avail > 0 %}#74b9ff{% else %}#6c757d{% endif %}">
         {{ wk.avail|int }}h{% if wk.avail_raw > wk.avail %} <span style="color:#adb5bd;font-weight:400">({{ wk.avail_raw|int }}h)</span>{% endif %}
@@ -260,8 +260,8 @@
     {% set team_util = (total_bill / team_avail * 100) if team_avail > 0 else 0 %}
     {% set team_logged_pct = (total_all / team_avail_raw * 100) if team_avail_raw > 0 else 0 %}
     <tr>
-      <td style="position:sticky;left:0;background:#212529;z-index:3" class="fw-bold">Team Total</td>
-      <td style="position:sticky;left:140px;background:#212529;z-index:3">
+      <td style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;background:#212529;z-index:3;overflow:hidden" class="fw-bold">Team Total</td>
+      <td style="width:100px;min-width:100px;max-width:100px;position:sticky;left:140px;background:#212529;z-index:3;overflow:hidden">
         <span class="badge bg-secondary" style="font-size:.68rem">All</span>
       </td>
       {% for wk in weeks %}
@@ -274,8 +274,7 @@
       {% endfor %}
       <td class="text-center fw-bold" style="background:#1a3a5c" title="Team billable / available">{{ '%.0f'|format(team_util) }}%</td>
       <td class="text-center fw-bold" style="background:#1a3a5c" title="Team total logged / available">{{ '%.0f'|format(team_logged_pct) }}%</td>
-      <td class="text-center fw-bold" style="background:#1a3a5c">{{ '%.1f'|format(total_all) }}h</td>
-      <td class="text-center" style="background:#1a3a5c">{{ users|length }} user{{ 's' if users|length != 1 }}</td>
+      <td class="text-center fw-bold" style="background:#1a3a5c">{{ '%.1f'|format(total_all) }}h<br><span style="font-size:.65rem;font-weight:400;opacity:.7">{{ users|length }} user{{ 's' if users|length != 1 }}</span></td>
     </tr>
   </tfoot>
 </table>
