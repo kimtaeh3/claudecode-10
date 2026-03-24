@@ -41,6 +41,13 @@
 {% set nb_display = ['Holiday', 'Vacation', 'ADMIN'] %}
 
 {# ── Available hours info bar ── #}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <input type="text" id="project-filter" class="form-control form-control-sm" placeholder="Filter by project name…"
+         style="max-width:320px" oninput="filterByProject(this.value)">
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="filterByProject('');document.getElementById('project-filter').value=''">Clear</button>
+  <span id="project-filter-count" class="text-muted small"></span>
+</div>
+
 <div class="d-flex align-items-center gap-3 mb-2" style="font-size:.8rem;color:#6c757d">
   <span><strong>{{ '%.0f'|format(total_avail) }}h</strong> available ({{ (total_avail/8)|round(0,'floor')|int }} workdays, excl. ON holidays)</span>
   {% if holidays %}
@@ -94,7 +101,7 @@
     {% set uid = loop.index %}
 
     {# ── Total row ── #}
-    <tr class="table-light fw-semibold">
+    <tr class="table-light fw-semibold" data-user="{{ uid }}">
       <td style="position:sticky;left:0;background:#f8f9fa;z-index:1">
         <span class="fw-bold">{{ u.employee }}</span>
         <span class="text-muted fw-normal ms-1" style="font-size:.72rem">({{ u.username }})</span>
@@ -125,7 +132,7 @@
     </tr>
 
     {# ── Billable summary row (expandable) ── #}
-    <tr class="util-group-row" style="cursor:pointer;background:#f0faf0"
+    <tr class="util-group-row" data-user="{{ uid }}" data-group="bill" style="cursor:pointer;background:#f0faf0"
         onclick="toggleGroup({{ uid }}, 'bill')">
       <td style="position:sticky;left:0;background:#f0faf0;z-index:1"></td>
       <td style="position:sticky;left:140px;background:#f0faf0;z-index:1">
@@ -149,7 +156,7 @@
         {% set cat_total = u.cat_totals.get(cat, 0) %}
         {% set cat_idx = uid ~ '_b_' ~ loop.index %}
         {% if cat_total > 0 %}
-        <tr class="util-detail util-detail-{{ uid }}-bill" style="display:none;cursor:pointer;background:#f6fdf6"
+        <tr class="util-detail util-detail-{{ uid }}-bill" data-user="{{ uid }}" data-cat="{{ cat_idx }}" style="display:none;cursor:pointer;background:#f6fdf6"
             onclick="toggleProjects('{{ cat_idx }}')">
           <td style="position:sticky;left:0;background:#f6fdf6;z-index:1"></td>
           <td style="position:sticky;left:140px;background:#f6fdf6;z-index:1;padding-left:1.4rem">
@@ -168,7 +175,7 @@
         </tr>
         {# Project breakdown rows #}
         {% for proj, phrs in u.cat_proj_totals.get(cat, {}).items()|sort %}
-        <tr class="util-proj util-proj-{{ cat_idx }}" style="display:none;background:#f9fff9">
+        <tr class="util-proj util-proj-{{ cat_idx }}" data-user="{{ uid }}" data-proj="{{ proj }}" style="display:none;background:#f9fff9">
           <td style="position:sticky;left:0;background:#f9fff9;z-index:1"></td>
           <td style="position:sticky;left:140px;background:#f9fff9;z-index:1;padding-left:2.4rem;font-size:.75rem;color:#198754;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="{{ proj }}">{{ proj }}</td>
           {% for wk in weeks %}
@@ -185,7 +192,7 @@
     {% endfor %}
 
     {# ── Non-Billable summary row (expandable) ── #}
-    <tr class="util-group-row" style="cursor:pointer;background:#fffbf0"
+    <tr class="util-group-row" data-user="{{ uid }}" data-group="nb" style="cursor:pointer;background:#fffbf0"
         onclick="toggleGroup({{ uid }}, 'nb')">
       <td style="position:sticky;left:0;background:#fffbf0;z-index:1"></td>
       <td style="position:sticky;left:140px;background:#fffbf0;z-index:1">
@@ -209,7 +216,7 @@
         {% set cat_total = u.cat_totals.get(cat, 0) %}
         {% set cat_idx = uid ~ '_n_' ~ loop.index %}
         {% if cat_total > 0 %}
-        <tr class="util-detail util-detail-{{ uid }}-nb" style="display:none;cursor:pointer;background:#fffdf5"
+        <tr class="util-detail util-detail-{{ uid }}-nb" data-user="{{ uid }}" style="display:none;cursor:pointer;background:#fffdf5"
             onclick="toggleProjects('{{ cat_idx }}')">
           <td style="position:sticky;left:0;background:#fffdf5;z-index:1"></td>
           <td style="position:sticky;left:140px;background:#fffdf5;z-index:1;padding-left:1.4rem">
@@ -246,7 +253,7 @@
 
     {# Spacer between users #}
     {% if not loop.last %}
-    <tr style="height:4px;background:#dee2e6"><td colspan="{{ 3 + weeks|length + 3 }}"></td></tr>
+    <tr data-user="{{ uid }}" data-spacer="1" style="height:4px;background:#dee2e6"><td colspan="{{ 3 + weeks|length + 3 }}"></td></tr>
     {% endif %}
   {% endfor %}
   </tbody>
@@ -281,6 +288,66 @@
 </div>
 
 <script>
+function filterByProject(query) {
+  const q = query.trim().toLowerCase();
+  const countEl = document.getElementById('project-filter-count');
+
+  if (!q) {
+    // Restore default state: show all top-level rows, collapse details
+    document.querySelectorAll('tr[data-user]').forEach(r => {
+      if (r.classList.contains('util-detail') || r.classList.contains('util-proj')) {
+        r.style.display = 'none';
+      } else {
+        r.style.display = '';
+      }
+    });
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+
+  // Collect all unique user ids
+  const uids = new Set(
+    Array.from(document.querySelectorAll('tr[data-user]')).map(r => r.dataset.user)
+  );
+
+  let matchCount = 0;
+  uids.forEach(uid => {
+    // Find all billable project rows for this user that match the query
+    const projRows = document.querySelectorAll(`tr.util-proj[data-user="${uid}"]`);
+    const matches = Array.from(projRows).filter(r =>
+      (r.dataset.proj || '').toLowerCase().includes(q)
+    );
+
+    // All rows for this user
+    const allRows = document.querySelectorAll(`tr[data-user="${uid}"]`);
+
+    if (matches.length === 0) {
+      allRows.forEach(r => r.style.display = 'none');
+    } else {
+      matchCount++;
+      // Hide everything first
+      allRows.forEach(r => r.style.display = 'none');
+
+      // Show: total row, billable summary, spacer
+      document.querySelectorAll(`tr.table-light[data-user="${uid}"], tr[data-user="${uid}"][data-group="bill"], tr[data-user="${uid}"][data-spacer]`).forEach(r => r.style.display = '');
+
+      // Show matching project rows and their parent category rows
+      matches.forEach(projRow => {
+        projRow.style.display = '';
+        // Find parent category row by cat_idx encoded in class util-proj-{catIdx}
+        const catClass = Array.from(projRow.classList).find(c => c.startsWith('util-proj-') && c !== 'util-proj');
+        if (catClass) {
+          const catIdx = catClass.replace('util-proj-', '');
+          const catRow = document.querySelector(`tr[data-cat="${catIdx}"]`);
+          if (catRow) catRow.style.display = '';
+        }
+      });
+    }
+  });
+
+  if (countEl) countEl.textContent = matchCount ? `${matchCount} employee${matchCount !== 1 ? 's' : ''} matched` : 'No matches';
+}
+
 function toggleGroup(uid, group) {
   const rows = document.querySelectorAll('.util-detail-' + uid + '-' + group);
   const chev = document.getElementById('chev-' + uid + '-' + group);
