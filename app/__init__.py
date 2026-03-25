@@ -23,6 +23,16 @@ def create_app():
             _db.execute("ALTER TABLE team_member ADD COLUMN email TEXT")
         if 'member_type' not in _existing:
             _db.execute("ALTER TABLE team_member ADD COLUMN member_type TEXT NOT NULL DEFAULT 'Employee (100%)'")
+        _db.execute(
+            'CREATE TABLE IF NOT EXISTS saved_filter ('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            'username TEXT NOT NULL, '
+            'name TEXT NOT NULL, '
+            'team TEXT NOT NULL DEFAULT "All", '
+            'start TEXT NOT NULL, '
+            'end TEXT NOT NULL, '
+            'created_at TEXT NOT NULL DEFAULT (datetime("now","localtime")))'
+        )
         # Default non-billable project pattern
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"

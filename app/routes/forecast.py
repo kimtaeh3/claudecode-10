@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, date, timedelta
 
-from flask import Blueprint, render_template, request, session
+from flask import Blueprint, render_template, request, session, jsonify
 from app.routes.auth import login_required
 from app.db import get_db
 
@@ -335,6 +335,10 @@ def index():
         })
 
     total_avail_raw = _available_hours(start, end, set())
+    saved_filters = db.execute(
+        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        (session['user_id'],)
+    ).fetchall()
     return render_template('forecast/index.html',
                            users=users, weeks=weeks,
                            teams=teams, team_filter=team_filter,
@@ -343,4 +347,42 @@ def index():
                            total_avail_raw=total_avail_raw,
                            all_cats=all_cats,
                            nb_projects=nb_projects,
-                           holidays=sorted(h.isoformat() for h in holidays))
+                           holidays=sorted(h.isoformat() for h in holidays),
+                           saved_filters=saved_filters)
+
+
+@bp.route('/filters/save', methods=['POST'])
+@login_required
+def save_filter():
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    team = (data.get('team') or 'All').strip()
+    start = (data.get('start') or '').strip()
+    end = (data.get('end') or '').strip()
+    if not name or not start or not end:
+        return jsonify({'error': 'Name, start, and end are required'}), 400
+    db = get_db()
+    db.execute(
+        'INSERT INTO saved_filter (username, name, team, start, end) VALUES (?, ?, ?, ?, ?)',
+        (session['user_id'], name, team, start, end)
+    )
+    db.commit()
+    filters = db.execute(
+        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        (session['user_id'],)
+    ).fetchall()
+    return jsonify({'filters': [dict(f) for f in filters]})
+
+
+@bp.route('/filters/delete/<int:filter_id>', methods=['DELETE'])
+@login_required
+def delete_filter(filter_id):
+    db = get_db()
+    db.execute('DELETE FROM saved_filter WHERE id = ? AND username = ?',
+               (filter_id, session['user_id']))
+    db.commit()
+    filters = db.execute(
+        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        (session['user_id'],)
+    ).fetchall()
+    return jsonify({'filters': [dict(f) for f in filters]})
