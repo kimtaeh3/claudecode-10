@@ -94,6 +94,16 @@ def table():
                     (uid, uid, '', entry.get('project', ''), entry.get('category', ''),
                      entry.get('company', ''), date_val, float(entry.get('hours', 0)))
                 )
+        # Auto-add any fetched usernames to team_member if they don't exist yet
+        for uid in results:
+            if not uid or len(uid) < 2:
+                continue
+            exists = db.execute('SELECT id FROM team_member WHERE username = ?', (uid,)).fetchone()
+            if not exists:
+                db.execute(
+                    "INSERT INTO team_member (username, name, team) VALUES (?, ?, 'All')",
+                    (uid, uid)
+                )
         db.commit()
     except Exception:
         pass  # DB failure must not break the hours view
