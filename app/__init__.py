@@ -23,6 +23,12 @@ def create_app():
             _db.execute("ALTER TABLE team_member ADD COLUMN email TEXT")
         if 'member_type' not in _existing:
             _db.execute("ALTER TABLE team_member ADD COLUMN member_type TEXT NOT NULL DEFAULT 'Employee (100%)'")
+        if 'start_date' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN start_date TEXT")
+        if 'end_date' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN end_date TEXT")
+        if 'notes' not in _existing:
+            _db.execute("ALTER TABLE team_member ADD COLUMN notes TEXT")
         _db.executescript(
             "CREATE TABLE IF NOT EXISTS saved_filter ("
             "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -32,7 +38,24 @@ def create_app():
             "start TEXT NOT NULL, "
             "end TEXT NOT NULL, "
             "created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')));"
+            "CREATE TABLE IF NOT EXISTS contractor_allocation ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "member_id INTEGER NOT NULL, "
+            "project_name TEXT NOT NULL, "
+            "utilization_pct REAL NOT NULL DEFAULT 100);"
         )
+        # contractor_allocation column migrations
+        _ca_cols = {r[1] for r in _db.execute('PRAGMA table_info(contractor_allocation)').fetchall()}
+        if 'start_date' not in _ca_cols:
+            _db.execute("ALTER TABLE contractor_allocation ADD COLUMN start_date TEXT")
+        if 'end_date' not in _ca_cols:
+            _db.execute("ALTER TABLE contractor_allocation ADD COLUMN end_date TEXT")
+        # saved_filter column migrations
+        _sf_cols = {r[1] for r in _db.execute('PRAGMA table_info(saved_filter)').fetchall()}
+        if 'usernames' not in _sf_cols:
+            _db.execute("ALTER TABLE saved_filter ADD COLUMN usernames TEXT NOT NULL DEFAULT ''")
+        if 'project' not in _sf_cols:
+            _db.execute("ALTER TABLE saved_filter ADD COLUMN project TEXT NOT NULL DEFAULT ''")
         # Default non-billable project pattern
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"

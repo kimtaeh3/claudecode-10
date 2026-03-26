@@ -4,7 +4,9 @@
 <h4 class="mb-3">Utilization</h4>
 
 {# ── Filters ── #}
-<form method="get" action="/forecast/" class="row g-2 align-items-end mb-3">
+<form method="get" action="/forecast/" class="row g-2 align-items-end mb-3" id="forecast-form">
+  <input type="hidden" name="users" id="filter-users" value="{{ users_filter }}">
+  <input type="hidden" name="view" id="filter-view" value="{{ view_mode }}">
   <div class="col-auto">
     <label class="form-label small mb-1">Team</label>
     <select name="team" class="form-select form-select-sm" style="width:auto">
@@ -30,6 +32,7 @@
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setMonth()">This Month</button>
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast3Months()">Last 3 Months</button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast6Months()">Last 6 Months</button>
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setYear()">This Year</button>
 
   <div class="ms-auto d-flex gap-2 align-items-center">
@@ -43,9 +46,9 @@
         {% for f in saved_filters %}
         <li class="d-flex align-items-center px-2 py-1 gap-2">
           <a class="dropdown-item py-0 px-1 flex-grow-1" href="javascript:void(0)"
-             onclick="applyFilter({{ f.team|tojson }}, {{ f.start|tojson }}, {{ f.end|tojson }})">
+             onclick='applyFilter({{ f.team|tojson }}, {{ f.start|tojson }}, {{ f.end|tojson }}, {{ (f.usernames or "")|tojson }}, {{ (f.project or "")|tojson }})'>
             <span class="fw-semibold" style="font-size:.85rem">{{ f.name }}</span>
-            <span class="text-muted d-block" style="font-size:.72rem">{{ f.team }} · {{ f.start }} → {{ f.end }}</span>
+            <span class="text-muted d-block" style="font-size:.72rem">{{ f.team }} · {{ f.start }} → {{ f.end }}{% if f.usernames %} · {{ f.usernames.split(',')|length }} user{{ 's' if f.usernames.split(',')|length != 1 }}{% endif %}{% if f.project %} · "{{ f.project }}"{% endif %}</span>
           </a>
           <button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Delete"
                   onclick="deleteFilter({{ f.id }}, event)">
@@ -56,8 +59,17 @@
       </ul>
     </div>
     {% endif %}
+    {% if users_filter or project_filter %}
+    <a href="/forecast/?team={{ team_filter }}&start={{ start }}&end={{ end }}"
+       class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-x-circle me-1"></i>Clear Filter
+    </a>
+    {% endif %}
     <button type="button" class="btn btn-outline-success btn-sm" onclick="openSaveFilterModal()">
       <i class="bi bi-bookmark-plus me-1"></i>Save Filter
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportTableCSV()">
+      <i class="bi bi-file-earmark-excel me-1"></i>Export
     </button>
   </div>
 </div>
@@ -92,11 +104,20 @@
 {% set nb_display = ['Holiday', 'Vacation', 'ADMIN'] %}
 
 {# ── Available hours info bar ── #}
-<div class="d-flex align-items-center gap-2 mb-3">
+<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
   <input type="text" id="project-filter" class="form-control form-control-sm" placeholder="Filter by project name…"
-         style="max-width:320px" oninput="filterByProject(this.value)">
-  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="filterByProject('');document.getElementById('project-filter').value=''">Clear</button>
+         style="max-width:320px" oninput="filterByProject(this.value)" value="{{ project_filter }}">
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearProjectFilter()">Clear</button>
   <span id="project-filter-count" class="text-muted small"></span>
+  <span id="user-sel-badge" class="d-inline-flex align-items-center gap-1 text-muted small" style="display:none!important">
+    <span id="user-sel-count"></span> user(s) selected
+    <button type="button" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;padding:1px 8px" onclick="filterBySelectedUsers()">Filter</button>
+    <button type="button" class="btn btn-link btn-sm p-0 text-danger" style="font-size:.75rem" onclick="clearUserSelection()">clear</button>
+  </span>
+  <div class="ms-auto btn-group btn-group-sm" role="group" aria-label="View mode">
+    <button type="button" class="btn btn-outline-secondary" id="btn-week-view" onclick="toggleViewMode('week')">Weeks</button>
+    <button type="button" class="btn btn-secondary active" id="btn-month-view" onclick="toggleViewMode('month')">Months</button>
+  </div>
 </div>
 
 <div class="d-flex align-items-center gap-3 mb-2" style="font-size:.8rem;color:#6c757d">
@@ -108,15 +129,33 @@
   {% endif %}
 </div>
 
+<style>
+#forecast-tbl.proj-filter-active tr[data-user]:not(.proj-match) td {
+  color: #adb5bd !important;
+  font-weight: normal !important;
+}
+#forecast-tbl.proj-filter-active tr[data-user]:not(.proj-match) td:first-child {
+  color: #212529 !important;
+}
+#forecast-tbl.proj-filter-active tr[data-user]:not(.proj-match) .badge {
+  opacity: .35;
+}
+</style>
 <div class="table-responsive" style="max-height:80vh;overflow:auto">
 <table class="table table-sm table-bordered align-middle" id="forecast-tbl"
        style="font-size:.82rem;white-space:nowrap">
   <thead class="table-dark" style="position:sticky;top:0;z-index:2">
     <tr>
-      <th style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;z-index:3;background:#212529;overflow:hidden">Employee</th>
+      <th style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;z-index:3;background:#212529;overflow:hidden">
+        <input type="checkbox" id="select-all-users" class="form-check-input me-1"
+               style="vertical-align:middle;cursor:pointer" title="Select all"
+               onchange="toggleSelectAll(this.checked)">
+        Employee
+      </th>
       <th style="width:100px;min-width:100px;max-width:100px;position:sticky;left:140px;z-index:3;background:#212529;overflow:hidden">Type</th>
       {% for wk in weeks %}
-      <th class="text-center" style="min-width:60px" title="{{ wk.date }} — {{ wk.avail|int }}h avail">
+      <th class="text-center" style="min-width:60px" title="{{ wk.date }} — {{ wk.avail|int }}h avail"
+          data-wi="{{ loop.index0 }}" data-month="{{ wk.month_key }}">
         {{ wk.label }}<br>
         <span style="font-size:.65rem;font-weight:normal;opacity:.7">{{ wk.date }}</span>
       </th>
@@ -136,7 +175,8 @@
       <th style="width:140px;min-width:140px;max-width:140px;position:sticky;left:0;z-index:3;background:#2c3e50;font-weight:500;padding:.25rem .5rem;overflow:hidden">Avail Hrs</th>
       <th style="width:100px;min-width:100px;max-width:100px;position:sticky;left:140px;z-index:3;background:#2c3e50;font-weight:400;font-style:italic;padding:.25rem .5rem;overflow:hidden">excl. holidays</th>
       {% for wk in weeks %}
-      <th class="text-center" style="padding:.25rem .25rem;font-weight:600;color:{% if wk.avail > 0 %}#74b9ff{% else %}#6c757d{% endif %}">
+      <th class="text-center" style="padding:.25rem .25rem;font-weight:600;color:{% if wk.avail > 0 %}#74b9ff{% else %}#6c757d{% endif %}"
+          data-wi="{{ loop.index0 }}" data-avail="{{ wk.avail }}" data-avail-raw="{{ wk.avail_raw }}">
         {{ wk.avail|int }}h{% if wk.avail_raw > wk.avail %} <span style="color:#adb5bd;font-weight:400">({{ wk.avail_raw|int }}h)</span>{% endif %}
       </th>
       {% endfor %}
@@ -152,10 +192,27 @@
     {% set uid = loop.index %}
 
     {# ── Total row ── #}
-    <tr class="table-light fw-semibold" data-user="{{ uid }}">
-      <td style="position:sticky;left:0;background:#f8f9fa;z-index:1">
+    <tr class="table-light fw-semibold" data-user="{{ uid }}" data-username="{{ u.username }}">
+      <td style="position:sticky;left:0;background:#f8f9fa;z-index:1;overflow:hidden">
+        <input type="checkbox" class="user-check form-check-input me-1"
+               value="{{ u.username }}"
+               {% if users_filter and u.username in users_filter.split(',') %}checked{% endif %}
+               onchange="onUserCheckChange()"
+               style="vertical-align:middle;cursor:pointer">
         <span class="fw-bold">{{ u.employee }}</span>
         <span class="text-muted fw-normal ms-1" style="font-size:.72rem">({{ u.username }})</span>
+        {% if u.contractor_allocs %}
+        <div style="margin-top:2px;white-space:normal">
+          {% for a in u.contractor_allocs %}
+          <span class="badge bg-info text-dark me-1" style="font-size:.6rem">{{ a.project_name }} {{ a.utilization_pct|int }}%</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if u.start_date or u.end_date %}
+        <div style="margin-top:1px;white-space:normal">
+          <span class="badge bg-light text-secondary border" style="font-size:.58rem">{{ u.start_date or '…' }} → {{ u.end_date or 'present' }}</span>
+        </div>
+        {% endif %}
       </td>
       <td style="position:sticky;left:140px;background:#f8f9fa;z-index:1">
         <span class="badge bg-secondary" style="font-size:.68rem">Total</span>
@@ -163,7 +220,8 @@
       {% for wk in weeks %}
         {% set h = u.week_data.get(wk.key, {}).get('total', 0) %}
         {% set avail = wk.avail_raw if wk.avail_raw > 0 else 40 %}
-        <td class="text-center {% if h >= avail %}text-success fw-semibold{% elif h > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}">
+        <td class="text-center {% if h >= avail %}text-success fw-semibold{% elif h > 0 %}text-danger fw-semibold{% else %}text-muted{% endif %}"
+            data-wi="{{ loop.index0 }}" data-h="{{ h }}">
           {{ '%.1f'|format(h) if h > 0 else '—' }}
         </td>
       {% endfor %}
@@ -194,7 +252,8 @@
       </td>
       {% for wk in weeks %}
         {% set h = u.week_data.get(wk.key, {}).get('billable', 0) %}
-        <td class="text-center text-success fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+        <td class="text-center text-success fw-semibold" style="font-size:.8rem"
+            data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
       {% endfor %}
       <td style="background:#eaf2ff"></td>
       <td style="background:#eaf2ff"></td>
@@ -218,7 +277,8 @@
           </td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
-            <td class="text-center text-success" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+            <td class="text-center text-success" style="font-size:.76rem"
+                data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
           <td style="background:#eaf2ff"></td>
@@ -231,7 +291,8 @@
           <td style="position:sticky;left:140px;background:#f9fff9;z-index:1;padding-left:2.4rem;font-size:.75rem;color:#198754;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="{{ proj }}">{{ proj }}</td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cat_projects', {}).get(cat, {}).get(proj, 0) %}
-            <td class="text-center" style="font-size:.74rem;color:#198754">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+            <td class="text-center" style="font-size:.74rem;color:#198754"
+                data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
           <td style="background:#eaf2ff"></td>
@@ -254,7 +315,8 @@
       </td>
       {% for wk in weeks %}
         {% set h = u.week_data.get(wk.key, {}).get('nonbillable', 0) %}
-        <td class="text-center text-secondary fw-semibold" style="font-size:.8rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+        <td class="text-center text-secondary fw-semibold" style="font-size:.8rem"
+            data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
       {% endfor %}
       <td style="background:#eaf2ff"></td>
       <td style="background:#eaf2ff"></td>
@@ -278,7 +340,8 @@
           </td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cats', {}).get(cat, 0) %}
-            <td class="text-center text-secondary" style="font-size:.76rem">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+            <td class="text-center text-secondary" style="font-size:.76rem"
+                data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
           <td style="background:#eaf2ff"></td>
@@ -291,7 +354,8 @@
           <td style="position:sticky;left:140px;background:#fffef8;z-index:1;padding-left:2.4rem;font-size:.75rem;color:#856404;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="{{ proj }}">{{ proj }}</td>
           {% for wk in weeks %}
             {% set h = u.week_data.get(wk.key, {}).get('cat_projects', {}).get(cat, {}).get(proj, 0) %}
-            <td class="text-center" style="font-size:.74rem;color:#856404">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
+            <td class="text-center" style="font-size:.74rem;color:#856404"
+                data-wi="{{ loop.index0 }}" data-h="{{ h }}">{{ '%.1f'|format(h) if h > 0 else '—' }}</td>
           {% endfor %}
           <td style="background:#eaf2ff"></td>
           <td style="background:#eaf2ff"></td>
@@ -326,32 +390,129 @@
         {% set wk_total = namespace(h=0) %}
         {% for u in users %}{% set wk_total.h = wk_total.h + u.week_data.get(wk.key, {}).get('total', 0) %}{% endfor %}
         {% set team_avail_wk = wk.avail * users|length %}
-        <td class="text-center fw-semibold {% if wk_total.h >= team_avail_wk and wk_total.h > 0 %}text-success{% elif wk_total.h > 0 %}text-warning{% endif %}">
+        <td class="text-center fw-semibold {% if wk_total.h >= team_avail_wk and wk_total.h > 0 %}text-success{% elif wk_total.h > 0 %}text-warning{% endif %}"
+            data-wi="{{ loop.index0 }}" data-h="{{ wk_total.h }}">
           {{ '%.1f'|format(wk_total.h) if wk_total.h > 0 else '—' }}
         </td>
       {% endfor %}
       <td class="text-center fw-bold" style="background:#1a3a5c" title="Team billable / available">{{ '%.0f'|format(team_util) }}%</td>
       <td class="text-center fw-bold" style="background:#1a3a5c" title="Team total logged / available">{{ '%.0f'|format(team_logged_pct) }}%</td>
-      <td class="text-center fw-bold" style="background:#1a3a5c">{{ '%.1f'|format(total_all) }}h<br><span style="font-size:.65rem;font-weight:400;opacity:.7">{{ users|length }} user{{ 's' if users|length != 1 }}</span></td>
+      <td class="text-center fw-bold" style="background:#1a3a5c" id="team-total-hrs-cell">{{ '%.1f'|format(total_all) }}h<br><span style="font-size:.65rem;font-weight:400;opacity:.7">{{ users|length }} user{{ 's' if users|length != 1 }}</span></td>
     </tr>
   </tfoot>
 </table>
 </div>
 
 <script>
+// ── Week / Month toggle ──────────────────────────────────────────────────────
+let _viewMode = null;
+
+function toggleViewMode(mode) {
+  if (_viewMode === mode) return;
+  _viewMode = mode;
+
+  document.getElementById('btn-week-view').className  = mode === 'week'  ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+  document.getElementById('btn-month-view').className = mode === 'month' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+
+  const tbl = document.getElementById('forecast-tbl');
+  if (!tbl) return;
+
+  if (mode === 'month') {
+    // Build month groups from main header week <th data-wi data-month>
+    const monthMap = {};  // month_key → {label, indices:[], avail:0, avail_raw:0}
+    tbl.querySelectorAll('thead tr:first-child th[data-wi]').forEach(th => {
+      const mk = th.dataset.month;
+      if (!mk) return;
+      if (!monthMap[mk]) {
+        const [y, m] = mk.split('-');
+        const label = new Date(y, m - 1, 1).toLocaleString('en-US', {month:'short', year:'numeric'});
+        monthMap[mk] = {label, indices: [], avail: 0, avail_raw: 0};
+      }
+      monthMap[mk].indices.push(th.dataset.wi);
+    });
+    // Read avail per week from avail row
+    tbl.querySelectorAll('thead tr:nth-child(2) th[data-wi]').forEach(th => {
+      const wi = th.dataset.wi;
+      // find month for this wi
+      const hdrTh = tbl.querySelector(`thead tr:first-child th[data-wi="${wi}"]`);
+      if (!hdrTh) return;
+      const mk = hdrTh.dataset.month;
+      if (mk && monthMap[mk]) {
+        monthMap[mk].avail += parseFloat(th.dataset.avail || 0);
+        monthMap[mk].avail_raw += parseFloat(th.dataset.availRaw || 0);
+      }
+    });
+    const monthKeys = Object.keys(monthMap).sort();
+
+    // Process every row
+    tbl.querySelectorAll('tr').forEach(row => {
+      const wkCells = Array.from(row.querySelectorAll('[data-wi]'));
+      if (wkCells.length === 0) return;
+
+      const insertBefore = wkCells[0];
+      const isAvailRow = !!row.querySelector('th[data-avail]');
+
+      monthKeys.forEach(mk => {
+        const mg = monthMap[mk];
+        let cell;
+        if (isAvailRow) {
+          cell = document.createElement('th');
+          cell.className = 'text-center';
+          cell.style.cssText = 'padding:.25rem .25rem;font-weight:600;color:' + (mg.avail > 0 ? '#74b9ff' : '#6c757d');
+          cell.textContent = Math.round(mg.avail) + 'h';
+          if (mg.avail_raw > mg.avail) {
+            cell.innerHTML += ` <span style="color:#adb5bd;font-weight:400">(${Math.round(mg.avail_raw)}h)</span>`;
+          }
+        } else {
+          const tag = wkCells[0].tagName.toLowerCase();
+          cell = document.createElement(tag);
+          cell.className = wkCells[0].className;
+          // Copy style only if it's a th (header rows)
+          if (tag === 'th') cell.style.cssText = wkCells[0].style.cssText;
+          let sum = 0;
+          mg.indices.forEach(wi => {
+            const c = row.querySelector(`[data-wi="${wi}"]`);
+            if (c) sum += parseFloat(c.dataset.h || 0);
+          });
+          cell.textContent = sum > 0 ? sum.toFixed(1) : '—';
+          if (sum > 0 && tag === 'td') cell.style.fontWeight = '600';
+        }
+        cell.dataset.injected = mk;
+        cell.style.minWidth = '72px';
+        row.insertBefore(cell, insertBefore);
+      });
+
+      // Hide week cells
+      wkCells.forEach(c => { c.dataset.wkHidden = '1'; c.style.display = 'none'; });
+    });
+
+    // Replace main header week <th> labels with month labels (injected already done)
+    // The injected cells in the header row are the month columns
+    tbl.querySelectorAll('thead tr:first-child th[data-injected]').forEach(th => {
+      const mk = th.dataset.injected;
+      if (monthMap[mk]) {
+        th.innerHTML = monthMap[mk].label.replace(' ', '<br><span style="font-size:.65rem;font-weight:normal;opacity:.7">') + '</span>';
+        th.style.cssText = 'min-width:80px;text-align:center;background:#212529';
+      }
+    });
+
+  } else {
+    // Restore week mode
+    tbl.querySelectorAll('[data-injected]').forEach(c => c.remove());
+    tbl.querySelectorAll('[data-wk-hidden]').forEach(c => {
+      c.style.removeProperty('display');
+      delete c.dataset.wkHidden;
+    });
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function filterByProject(query) {
   const q = query.trim().toLowerCase();
   const countEl = document.getElementById('project-filter-count');
 
   if (!q) {
-    // Restore default state: show all top-level rows, collapse details
-    document.querySelectorAll('tr[data-user]').forEach(r => {
-      if (r.classList.contains('util-detail') || r.classList.contains('util-proj')) {
-        r.style.display = 'none';
-      } else {
-        r.style.display = '';
-      }
-    });
+    _restoreAllRows();
     if (countEl) countEl.textContent = '';
     return;
   }
@@ -382,10 +543,10 @@ function filterByProject(query) {
       // Show: total row, billable summary, spacer
       document.querySelectorAll(`tr.table-light[data-user="${uid}"], tr[data-user="${uid}"][data-group="bill"], tr[data-user="${uid}"][data-spacer]`).forEach(r => r.style.display = '');
 
-      // Show matching project rows and their parent category rows
+      // Show matching project rows, mark them, and show parent category rows
       matches.forEach(projRow => {
         projRow.style.display = '';
-        // Find parent category row by cat_idx encoded in class util-proj-{catIdx}
+        projRow.classList.add('proj-match');
         const catClass = Array.from(projRow.classList).find(c => c.startsWith('util-proj-') && c !== 'util-proj');
         if (catClass) {
           const catIdx = catClass.replace('util-proj-', '');
@@ -396,7 +557,32 @@ function filterByProject(query) {
     }
   });
 
+  // Activate dim-all-except-match mode on the table
+  const tbl = document.getElementById('forecast-tbl');
+  if (tbl) tbl.classList.add('proj-filter-active');
+
   if (countEl) countEl.textContent = matchCount ? `${matchCount} employee${matchCount !== 1 ? 's' : ''} matched` : 'No matches';
+
+  // Sum visible project rows for filtered total
+  let projTotal = 0;
+  document.querySelectorAll('tr.util-proj').forEach(row => {
+    if (row.style.display !== 'none') {
+      const lastCell = row.querySelector('td:last-child');
+      if (lastCell) projTotal += parseFloat(lastCell.textContent) || 0;
+    }
+  });
+  const footerCell = document.getElementById('team-total-hrs-cell');
+  if (footerCell) {
+    const existing = footerCell.querySelector('.proj-total-note');
+    if (existing) existing.remove();
+    if (projTotal > 0) {
+      const note = document.createElement('span');
+      note.className = 'proj-total-note';
+      note.style.cssText = 'display:block;font-size:.65rem;font-weight:400;color:#74b9ff';
+      note.textContent = `(${projTotal.toFixed(1)}h filtered)`;
+      footerCell.appendChild(note);
+    }
+  }
 }
 
 function toggleGroup(uid, group) {
@@ -434,11 +620,100 @@ function toggleProjects(catIdx) {
 <script>
 let _saveFilterModal = null;
 
+function toggleSelectAll(checked) {
+  // Only check visible users (respects current project/user filter)
+  document.querySelectorAll('.user-check').forEach(cb => {
+    const row = cb.closest('tr');
+    if (row && row.style.display !== 'none') cb.checked = checked;
+  });
+  onUserCheckChange();
+}
+
+function onUserCheckChange() {
+  // Sync select-all checkbox state
+  const all = document.querySelectorAll('.user-check');
+  const visibleAll = Array.from(all).filter(cb => cb.closest('tr')?.style.display !== 'none');
+  const checkedVisible = visibleAll.filter(cb => cb.checked);
+  const sa = document.getElementById('select-all-users');
+  if (sa) {
+    sa.indeterminate = checkedVisible.length > 0 && checkedVisible.length < visibleAll.length;
+    sa.checked = visibleAll.length > 0 && checkedVisible.length === visibleAll.length;
+  }
+  const checked = document.querySelectorAll('.user-check:checked');
+  const badge = document.getElementById('user-sel-badge');
+  if (checked.length > 0) {
+    document.getElementById('user-sel-count').textContent = checked.length;
+    badge.style.removeProperty('display');
+  } else {
+    badge.style.setProperty('display', 'none', 'important');
+  }
+}
+
+function _restoreAllRows() {
+  document.querySelectorAll('tr[data-user]').forEach(r => {
+    r.classList.remove('proj-match');
+    if (r.classList.contains('util-detail') || r.classList.contains('util-proj')) {
+      r.style.removeProperty('display');
+      r.style.display = 'none';
+    } else {
+      r.style.removeProperty('display');
+    }
+  });
+  const tbl = document.getElementById('forecast-tbl');
+  if (tbl) tbl.classList.remove('proj-filter-active');
+  const existingNote = document.querySelector('#team-total-hrs-cell .proj-total-note');
+  if (existingNote) existingNote.remove();
+}
+
+function clearProjectFilter() {
+  document.getElementById('project-filter').value = '';
+  _restoreAllRows();
+  const countEl = document.getElementById('project-filter-count');
+  if (countEl) countEl.textContent = '';
+  onUserCheckChange();
+}
+
+function filterBySelectedUsers() {
+  const checked = new Set(Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value));
+  if (checked.size === 0) return;
+  // First restore all rows, then hide non-selected
+  _restoreAllRows();
+  document.querySelectorAll('tr[data-user]').forEach(r => {
+    if (r.classList.contains('util-detail') || r.classList.contains('util-proj')) return;
+    const totalRow = document.querySelector(`tr.table-light[data-user="${r.dataset.user}"]`);
+    const username = totalRow ? totalRow.dataset.username : null;
+    if (!username || !checked.has(username)) {
+      r.style.display = 'none';
+    }
+  });
+  const countEl = document.getElementById('project-filter-count');
+  if (countEl) countEl.textContent = `${checked.size} employee${checked.size !== 1 ? 's' : ''} matched`;
+}
+
+function clearUserSelection() {
+  document.querySelectorAll('.user-check').forEach(cb => cb.checked = false);
+  _restoreAllRows();
+  // Re-apply project filter if still active
+  const pf = document.getElementById('project-filter')?.value || '';
+  if (pf) {
+    filterByProject(pf);
+  } else {
+    const countEl = document.getElementById('project-filter-count');
+    if (countEl) countEl.textContent = '';
+  }
+  onUserCheckChange();
+}
+
 function openSaveFilterModal() {
   const team = document.querySelector('[name="team"]')?.value || 'All';
   const start = document.getElementById('start')?.value || '';
   const end = document.getElementById('end')?.value || '';
-  document.getElementById('save-filter-desc').textContent = `Team: ${team} · ${start} → ${end}`;
+  const project = document.getElementById('project-filter')?.value || '';
+  const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
+  let desc = `Team: ${team} · ${start} → ${end}`;
+  if (project) desc += ` · "${project}"`;
+  if (checked.length > 0) desc += ` · ${checked.length} user(s) selected`;
+  document.getElementById('save-filter-desc').textContent = desc;
   document.getElementById('save-filter-name').value = '';
   document.getElementById('save-filter-error').style.display = 'none';
   if (!_saveFilterModal) _saveFilterModal = new bootstrap.Modal(document.getElementById('saveFilterModal'));
@@ -451,12 +726,14 @@ function saveFilter() {
   const team  = document.querySelector('[name="team"]')?.value || 'All';
   const start = document.getElementById('start')?.value || '';
   const end   = document.getElementById('end')?.value || '';
+  const project = document.getElementById('project-filter')?.value || '';
+  const usernames = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value).join(',');
   const errEl = document.getElementById('save-filter-error');
   if (!name) { errEl.textContent = 'Please enter a name.'; errEl.style.display = ''; return; }
   fetch('{{ url_for("forecast.save_filter") }}', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, team, start, end }),
+    body: JSON.stringify({ name, team, start, end, usernames, project }),
   })
   .then(r => r.json())
   .then(data => {
@@ -466,11 +743,59 @@ function saveFilter() {
   });
 }
 
-function applyFilter(team, start, end) {
-  document.querySelector('[name="team"]').value = team;
-  document.getElementById('start').value = start;
-  document.getElementById('end').value = end;
-  document.querySelector('form[action="/forecast/"] button[type="submit"]').click();
+function applyFilter(team, start, end, usernames, project) {
+  const params = new URLSearchParams({ team, start, end });
+  if (usernames) params.set('users', usernames);
+  if (project) params.set('project', project);
+  window.location.href = '/forecast/?' + params.toString();
+}
+
+function exportTableCSV() {
+  const tbl = document.getElementById('forecast-tbl');
+  if (!tbl) return;
+
+  const _collectRows = () => {
+    const rows = [];
+    tbl.querySelectorAll('tr').forEach(tr => {
+      if (tr.style.display === 'none') return;
+      if (tr.dataset.spacer) return;
+      const cells = [];
+      tr.querySelectorAll('th, td').forEach(td => {
+        if (td.style.display === 'none') return;
+        let val = td.innerText.replace(/\n/g, ' ').trim();
+        // Replace em-dash with empty string so Excel shows blank
+        val = val.replace(/^[—\u2014]+$/, '');
+        cells.push(val);
+      });
+      if (cells.length > 0) rows.push(cells);
+    });
+    return rows;
+  };
+
+  const proj = document.getElementById('project-filter')?.value.trim() || '';
+  const filename = 'utilization' + (proj ? '_' + proj.replace(/\s+/g, '_') : '') + '_' + new Date().toISOString().slice(0,10);
+
+  const doExport = () => {
+    const rows = _collectRows();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Auto column widths
+    const colWidths = rows[0]?.map((_, ci) => ({
+      wch: Math.min(30, Math.max(8, ...rows.map(r => String(r[ci] || '').length)))
+    })) || [];
+    ws['!cols'] = colWidths;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Utilization');
+    XLSX.writeFile(wb, filename + '.xlsx');
+  };
+
+  if (window.XLSX) {
+    doExport();
+  } else {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = doExport;
+    document.head.appendChild(s);
+  }
 }
 
 function deleteFilter(id, e) {
@@ -479,5 +804,31 @@ function deleteFilter(id, e) {
     .then(r => r.json())
     .then(() => location.reload());
 }
+
+// Capture checked users + project before form submit
+(function() {
+  const form = document.getElementById('forecast-form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
+      document.getElementById('filter-users').value = checked.join(',');
+    });
+  }
+  // Apply server-provided view mode on page load, then scroll to show summary columns
+  setTimeout(() => {
+    toggleViewMode({{ view_mode|tojson }});
+    const container = document.querySelector('.table-responsive');
+    if (container) container.scrollLeft = container.scrollWidth;
+  }, 50);
+  // Auto-apply project filter on page load
+  const pfVal = {{ project_filter|tojson }};
+  if (pfVal) {
+    setTimeout(() => { filterByProject(pfVal); }, 100);
+  }
+  // Init user selection badge on page load
+  if (document.getElementById('filter-users')?.value) setTimeout(onUserCheckChange, 50);
+})();
+
+// Date preset helpers are defined in app.js
 </script>
 {% endblock %}

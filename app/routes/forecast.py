@@ -63,6 +63,12 @@ def _christmas_boxing(year: int) -> tuple:
     return christmas, boxing
 
 
+def _victoria_day(year: int) -> date:
+    """Last Monday on or before May 24."""
+    may24 = date(year, 5, 24)
+    return may24 - timedelta(days=may24.weekday())
+
+
 def ontario_holidays(year: int) -> set:
     """Return set of Ontario statutory holiday dates for the given year."""
     easter = _easter_sunday(year)
@@ -71,10 +77,9 @@ def ontario_holidays(year: int) -> set:
         _observed(date(year, 1, 1)),           # New Year's Day
         _nth_weekday(year, 2, 0, 3),           # Family Day (3rd Mon Feb)
         easter - timedelta(days=2),            # Good Friday
-        _nth_weekday(year, 5, 0, 1)            # Victoria Day: last Mon on/before May 25
-        if _nth_weekday(year, 5, 0, 1) <= date(year, 5, 25)
-        else _nth_weekday(year, 5, 0, 1) - timedelta(weeks=1),
+        _victoria_day(year),                   # Victoria Day (last Mon on/before May 24)
         _observed(date(year, 7, 1)),           # Canada Day
+        _nth_weekday(year, 8, 0, 1),           # Civic Holiday (1st Mon Aug) — Ontario
         _nth_weekday(year, 9, 0, 1),           # Labour Day (1st Mon Sep)
         _nth_weekday(year, 10, 0, 2),          # Thanksgiving (2nd Mon Oct)
         christmas,
@@ -110,16 +115,14 @@ def _available_hours(start_str: str, end_str: str, holidays: set) -> float:
 def ontario_holidays_named(year: int) -> list:
     """Return sorted list of (date, name) for Ontario statutory holidays."""
     easter = _easter_sunday(year)
-    vic = _nth_weekday(year, 5, 0, 1)
-    if vic > date(year, 5, 25):
-        vic -= timedelta(weeks=1)
     christmas, boxing = _christmas_boxing(year)
     hols = [
-        (_observed(date(year, 1, 1)),       "New Year's Day"),
+        (_observed(date(year, 1, 1)),        "New Year's Day"),
         (_nth_weekday(year, 2, 0, 3),        "Family Day"),
         (easter - timedelta(days=2),         "Good Friday"),
-        (vic,                                "Victoria Day"),
+        (_victoria_day(year),                "Victoria Day"),
         (_observed(date(year, 7, 1)),        "Canada Day"),
+        (_nth_weekday(year, 8, 0, 1),        "Civic Holiday"),
         (_nth_weekday(year, 9, 0, 1),        "Labour Day"),
         (_nth_weekday(year, 10, 0, 2),       "Thanksgiving"),
         (christmas,                          "Christmas Day"),
@@ -176,10 +179,35 @@ def index():
     start = request.args.get('start', default_start)
     end = request.args.get('end', default_end)
     team_filter = request.args.get('team', '')
+    users_filter_raw = request.args.get('users', '')
+    users_filter_set = {u.strip() for u in users_filter_raw.split(',') if u.strip()} if users_filter_raw else set()
+    project_filter = request.args.get('project', '')
+    view_mode = request.args.get('view', 'month')
 
-    # Name lookup: username → full name from team_member
-    name_rows = db.execute('SELECT username, name FROM team_member').fetchall()
+    # Name lookup: username → full name + member_type + employment dates from team_member
+    name_rows = db.execute('SELECT username, name, member_type, start_date, end_date FROM team_member').fetchall()
     member_names = {r['username']: r['name'] for r in name_rows if r['name']}
+    member_types_map = {r['username']: (r['member_type'] or 'Employee (100%)') for r in name_rows}
+    member_start_map = {r['username']: r['start_date'] for r in name_rows if r['start_date']}
+    member_end_map   = {r['username']: r['end_date']   for r in name_rows if r['end_date']}
+
+    # Contractor project allocations (by username)
+    try:
+        alloc_rows = db.execute(
+            'SELECT tm.username, ca.project_name, ca.utilization_pct, ca.start_date, ca.end_date '
+            'FROM contractor_allocation ca '
+            'JOIN team_member tm ON tm.id = ca.member_id ORDER BY ca.id'
+        ).fetchall()
+    except Exception:
+        alloc_rows = []
+    contractor_allocs_map = defaultdict(list)
+    for r in alloc_rows:
+        contractor_allocs_map[r['username']].append({
+            'project_name': r['project_name'],
+            'utilization_pct': r['utilization_pct'],
+            'start_date': r['start_date'] or '',
+            'end_date': r['end_date'] or '',
+        })
 
     # Available teams
     rows = db.execute('SELECT team FROM team_member').fetchall()
@@ -273,8 +301,72 @@ def index():
         if u not in user_max_date or r['date'] > user_max_date[u]:
             user_max_date[u] = r['date']
 
+    # Include team members with no bulk_hours so they still appear with zeros
+    if team_filter and team_filter != 'All':
+        zero_members = db.execute(
+            "SELECT username FROM team_member "
+            "WHERE INSTR(',' || team || ',', ',' || ? || ',') > 0",
+            (team_filter,)).fetchall()
+    else:
+        zero_members = db.execute('SELECT username FROM team_member').fetchall()
+    for zm in zero_members:
+        u = zm['username']
+        if u not in user_weeks:
+            user_weeks[u]  # touch to create empty defaultdict entry
+            user_employee[u] = member_names.get(u) or u
+
+    # Apply users_filter_set early so zero-entry users are also filtered
+    if users_filter_set:
+        for u in list(user_weeks.keys()):
+            if u not in users_filter_set:
+                del user_weeks[u]
+
+    # Inject synthetic billable hours for contractors (no Q360 data)
+    def _weeks_in_range(s: str, e: str) -> set:
+        sd, ed = date.fromisoformat(s), date.fromisoformat(e)
+        keys, d = set(), sd
+        while d <= ed:
+            keys.add(d.strftime('%Y-W%W'))
+            d += timedelta(days=7)
+        keys.add(ed.strftime('%Y-W%W'))
+        return keys
+
+    contractor_week_keys = set()
+    for username, allocs in contractor_allocs_map.items():
+        if username not in user_weeks:
+            continue
+        mtype = member_types_map.get(username, 'Employee (100%)')
+        if not mtype.startswith('Contractor'):
+            continue
+        for alloc in allocs:
+            pct = alloc['utilization_pct'] / 100.0
+            project_name = alloc['project_name'] or '(no project)'
+            # Effective range = intersection of filter, allocation, and member employment
+            eff_start = start
+            eff_end = end
+            if alloc['start_date']:
+                eff_start = max(eff_start, alloc['start_date'])
+            if alloc['end_date']:
+                eff_end = min(eff_end, alloc['end_date'])
+            if username in member_start_map:
+                eff_start = max(eff_start, member_start_map[username])
+            if username in member_end_map:
+                eff_end = min(eff_end, member_end_map[username])
+            if eff_start > eff_end:
+                continue
+            for wk in _weeks_in_range(eff_start, eff_end):
+                wk_hrs = _week_available_hours(wk, eff_start, eff_end, holidays) * pct
+                if wk_hrs <= 0:
+                    continue
+                contractor_week_keys.add(wk)
+                wd = user_weeks[username][wk]
+                wd['total'] += wk_hrs
+                wd['billable'] += wk_hrs
+                wd['cats']['Billable'] += wk_hrs
+                wd['cat_projects']['Billable'][project_name] += wk_hrs
+
     # Sorted week list with per-week available hours
-    all_week_keys = sorted({r['week'] for r in rows})
+    all_week_keys = sorted({r['week'] for r in rows} | contractor_week_keys)
     weeks = []
     for wk in all_week_keys:
         try:
@@ -286,7 +378,11 @@ def index():
             date_label = ''
         avail = _week_available_hours(wk, start, end, holidays)
         avail_raw = _week_available_hours(wk, start, end, set())
-        weeks.append({'key': wk, 'label': label, 'date': date_label, 'avail': avail, 'avail_raw': avail_raw})
+        try:
+            month_key = mon.strftime('%Y-%m')
+        except Exception:
+            month_key = ''
+        weeks.append({'key': wk, 'label': label, 'date': date_label, 'avail': avail, 'avail_raw': avail_raw, 'month_key': month_key})
 
     # Sum of per-week values — matches exactly what's shown in the Avail Hrs row
     weeks_avail = sum(w['avail'] for w in weeks)       # blue numbers (excl. holidays)
@@ -295,18 +391,46 @@ def index():
     # Collect all categories seen across all users/weeks
     all_cats = sorted({cat for u in user_weeks.values() for wk in u.values() for cat in wk['cats']})
 
+    def _user_avail(username):
+        """Available hours for this user based on member_type, contractor allocations, and employment dates."""
+        mtype = member_types_map.get(username, 'Employee (100%)')
+        base = 0.5 if '50%' in mtype else 1.0
+        if mtype.startswith('Contractor'):
+            allocs = contractor_allocs_map.get(username, [])
+            if allocs:
+                total_pct = sum(a['utilization_pct'] for a in allocs) / 100.0
+                base *= min(total_pct, 1.0)
+        # Clamp to employment period if set
+        eff_start = max(start, member_start_map[username]) if username in member_start_map else start
+        eff_end   = min(end,   member_end_map[username])   if username in member_end_map   else end
+        if eff_start > eff_end:
+            return 0.0, 0.0
+        if eff_start == start and eff_end == end:
+            return weeks_avail * base, weeks_avail_raw * base
+        u_avail     = sum(_week_available_hours(w['key'], eff_start, eff_end, holidays) for w in weeks) * base
+        u_avail_raw = sum(_week_available_hours(w['key'], eff_start, eff_end, set())    for w in weeks) * base
+        return u_avail, u_avail_raw
+
     # Per-user summary
     users = []
     for username in sorted(user_weeks.keys()):
+        # Skip employees whose employment period doesn't overlap with the filter range
+        emp_end   = member_end_map.get(username)
+        emp_start = member_start_map.get(username)
+        if emp_end and emp_end < start:
+            continue  # left before filter window
+        if emp_start and emp_start > end:
+            continue  # joined after filter window
         wdata = user_weeks[username]
         total_all = sum(w['total'] for w in wdata.values())
         total_bill = sum(w['billable'] for w in wdata.values())
         total_nonbill = sum(w['nonbillable'] for w in wdata.values())
         weeks_worked = len(wdata)
+        u_avail, u_avail_raw = _user_avail(username)
         # Util%   = billable / blue total (excl. holidays)
         # Logged% = total    / bracket total (incl. holidays)
-        util_pct = (total_bill / weeks_avail * 100) if weeks_avail > 0 else 0
-        logged_pct = (total_all / weeks_avail_raw * 100) if weeks_avail_raw > 0 else 0
+        util_pct = (total_bill / u_avail * 100) if u_avail > 0 else 0
+        logged_pct = (total_all / u_avail_raw * 100) if u_avail_raw > 0 else 0
         avg_per_week = (total_all / weeks_worked) if weeks_worked > 0 else 0
         # Per-category and per-category-project totals across all weeks
         cat_totals = defaultdict(float)
@@ -321,6 +445,10 @@ def index():
         users.append({
             'username': username,
             'employee': user_employee.get(username, username),
+            'member_type': member_types_map.get(username, 'Employee (100%)'),
+            'contractor_allocs': contractor_allocs_map.get(username, []),
+            'start_date': member_start_map.get(username, ''),
+            'end_date': member_end_map.get(username, ''),
             'week_data': wdata,
             'total': total_all,
             'billable': total_bill,
@@ -329,26 +457,29 @@ def index():
             'logged_pct': logged_pct,
             'avg_per_week': avg_per_week,
             'weeks_worked': weeks_worked,
-            'avail_hours': weeks_avail,
+            'avail_hours': u_avail,
             'cat_totals': dict(cat_totals),
             'cat_proj_totals': {c: dict(p) for c, p in cat_proj_totals.items()},
         })
 
     total_avail_raw = _available_hours(start, end, set())
     saved_filters = db.execute(
-        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        'SELECT id, name, team, start, end, usernames, project FROM saved_filter WHERE username = ? ORDER BY name',
         (session['user_id'],)
     ).fetchall()
     return render_template('forecast/index.html',
                            users=users, weeks=weeks,
                            teams=teams, team_filter=team_filter,
                            start=start, end=end,
+                           users_filter=users_filter_raw,
+                           project_filter=project_filter,
                            total_avail=total_avail,
                            total_avail_raw=total_avail_raw,
                            all_cats=all_cats,
                            nb_projects=nb_projects,
                            holidays=sorted(h.isoformat() for h in holidays),
-                           saved_filters=saved_filters)
+                           saved_filters=saved_filters,
+                           view_mode=view_mode)
 
 
 @bp.route('/filters/save', methods=['POST'])
@@ -359,16 +490,18 @@ def save_filter():
     team = (data.get('team') or 'All').strip()
     start = (data.get('start') or '').strip()
     end = (data.get('end') or '').strip()
+    usernames = (data.get('usernames') or '').strip()
+    project = (data.get('project') or '').strip()
     if not name or not start or not end:
         return jsonify({'error': 'Name, start, and end are required'}), 400
     db = get_db()
     db.execute(
-        'INSERT INTO saved_filter (username, name, team, start, end) VALUES (?, ?, ?, ?, ?)',
-        (session['user_id'], name, team, start, end)
+        'INSERT INTO saved_filter (username, name, team, start, end, usernames, project) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (session['user_id'], name, team, start, end, usernames, project)
     )
     db.commit()
     filters = db.execute(
-        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        'SELECT id, name, team, start, end, usernames, project FROM saved_filter WHERE username = ? ORDER BY name',
         (session['user_id'],)
     ).fetchall()
     return jsonify({'filters': [dict(f) for f in filters]})
@@ -382,7 +515,7 @@ def delete_filter(filter_id):
                (filter_id, session['user_id']))
     db.commit()
     filters = db.execute(
-        'SELECT id, name, team, start, end FROM saved_filter WHERE username = ? ORDER BY name',
+        'SELECT id, name, team, start, end, usernames, project FROM saved_filter WHERE username = ? ORDER BY name',
         (session['user_id'],)
     ).fetchall()
     return jsonify({'filters': [dict(f) for f in filters]})

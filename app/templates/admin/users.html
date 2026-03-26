@@ -38,6 +38,15 @@
           </datalist>
         </div>
         <div class="mb-2">
+          <select class="form-select form-select-sm" id="add-member-type">
+            <option value="Employee (100%)">Employee (100%)</option>
+            <option value="Employee (50%)">Employee (50%)</option>
+            <option value="Manager (50%)">Manager (50%)</option>
+            <option value="Contractor (100%)">Contractor (100%)</option>
+            <option value="Contractor (50%)">Contractor (50%)</option>
+          </select>
+        </div>
+        <div class="mb-2">
           <input type="email" class="form-control form-control-sm" id="add-email"
                  placeholder="Email (optional)" autocomplete="off">
         </div>
@@ -58,6 +67,7 @@ function openAddMemberModal() {
   document.getElementById('add-name').value = '';
   document.getElementById('add-username').value = '';
   document.getElementById('add-team').value = '';
+  document.getElementById('add-member-type').value = 'Employee (100%)';
   document.getElementById('add-email').value = '';
   document.getElementById('add-member-error').style.display = 'none';
   if (!_addMemberModal) {
@@ -86,6 +96,7 @@ function saveAddMember() {
   fd.append('name', name);
   fd.append('username', username);
   fd.append('team', team);
+  fd.append('member_type', document.getElementById('add-member-type').value);
   fd.append('email', email);
   fetch('{{ url_for("admin.add_user") }}', { method: 'POST', body: fd,
     headers: { 'HX-Request': 'true' } })

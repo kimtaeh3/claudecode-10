@@ -1,3 +1,5 @@
+import json as _json
+from collections import defaultdict
 from datetime import date
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify
 from app.routes.auth import login_required
@@ -16,6 +18,26 @@ def _member_stats(db):
     return {r['username']: r for r in rows}
 
 
+def _contractor_allocs(db):
+    """Return dict: member_id → list of {project_name, utilization_pct}"""
+    try:
+        rows = db.execute(
+            'SELECT member_id, project_name, utilization_pct, start_date, end_date '
+            'FROM contractor_allocation ORDER BY id'
+        ).fetchall()
+    except Exception:
+        return {}
+    allocs = defaultdict(list)
+    for r in rows:
+        allocs[r['member_id']].append({
+            'project_name': r['project_name'],
+            'utilization_pct': r['utilization_pct'],
+            'start_date': r['start_date'] or '',
+            'end_date': r['end_date'] or '',
+        })
+    return dict(allocs)
+
+
 @bp.route('/users')
 @login_required
 def users():
@@ -30,7 +52,8 @@ def users():
     teams = ['All'] + sorted(t for t in seen if t != 'All')
 
     return render_template('admin/users.html', members=members, teams=teams,
-                           member_stats=_member_stats(db))
+                           member_stats=_member_stats(db),
+                           contractor_allocs=_contractor_allocs(db))
 
 
 @bp.route('/users/add', methods=['POST'])
@@ -64,7 +87,8 @@ def add_user():
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
         return render_template('admin/_members_table.html', members=members,
-                               member_stats=_member_stats(db))
+                               member_stats=_member_stats(db),
+                               contractor_allocs=_contractor_allocs(db))
     return redirect(url_for('admin.users'))
 
 
@@ -76,15 +100,34 @@ def edit_user(member_id):
     team = request.form.get('team', '').strip()
     email = request.form.get('email', '').strip()
     member_type = request.form.get('member_type', 'Employee (100%)').strip()
+    start_date  = request.form.get('start_date', '').strip() or None
+    end_date    = request.form.get('end_date', '').strip() or None
+    notes       = request.form.get('notes', '').strip() or None
     db = get_db()
     if username and team:
-        db.execute('UPDATE team_member SET username=?, name=?, team=?, email=?, member_type=? WHERE id=?',
-                   (username, name, team, email or None, member_type, member_id))
+        db.execute('UPDATE team_member SET username=?, name=?, team=?, email=?, member_type=?, start_date=?, end_date=?, notes=? WHERE id=?',
+                   (username, name, team, email or None, member_type, start_date, end_date, notes, member_id))
+        # Save contractor allocations
+        try:
+            db.execute('DELETE FROM contractor_allocation WHERE member_id = ?', (member_id,))
+            raw = request.form.get('contractor_projects', '[]')
+            for cp in _json.loads(raw):
+                pname = str(cp.get('project_name', '')).strip()
+                pct = float(cp.get('utilization_pct', 0))
+                if pname and pct > 0:
+                    sd = str(cp.get('start_date', '') or '').strip() or None
+                    ed = str(cp.get('end_date', '') or '').strip() or None
+                    db.execute(
+                        'INSERT INTO contractor_allocation (member_id, project_name, utilization_pct, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
+                        (member_id, pname, pct, sd, ed))
+        except Exception:
+            pass
         db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
         return render_template('admin/_members_table.html', members=members,
-                               member_stats=_member_stats(db))
+                               member_stats=_member_stats(db),
+                               contractor_allocs=_contractor_allocs(db))
     return redirect(url_for('admin.users'))
 
 
@@ -97,7 +140,8 @@ def delete_user(member_id):
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
         return render_template('admin/_members_table.html', members=members,
-                               member_stats=_member_stats(db))
+                               member_stats=_member_stats(db),
+                               contractor_allocs=_contractor_allocs(db))
     return redirect(url_for('admin.users'))
 
 

@@ -1,16 +1,32 @@
 <table class="table table-sm table-hover">
   <thead class="table-light">
-    <tr><th>Name</th><th>Username</th><th>Team</th><th>Type</th><th>Email</th><th>Last Updated</th><th>Data Range in DB</th><th></th></tr>
+    <tr><th>Name</th><th>Username</th><th>Team</th><th>Type</th><th>Email</th><th>Employment Period</th><th>Last Updated</th><th>Data Range in DB</th><th></th></tr>
   </thead>
   <tbody>
     {% for m in members %}
     <tr>
       {% set st = member_stats.get(m.username) %}
+      {% set allocs = contractor_allocs.get(m.id, []) %}
       <td>{{ m.name or '—' }}</td>
       <td>{{ m.username }}</td>
       <td>{{ m.team }}</td>
-      <td>{{ m.member_type or 'Employee (100%)' }}</td>
+      <td>
+        {{ m.member_type or 'Employee (100%)' }}
+        {% if allocs %}
+          <div style="margin-top:2px">
+            {% for a in allocs %}
+            <span class="badge bg-info text-dark me-1" style="font-size:.62rem">{{ a.project_name }} {{ a.utilization_pct|int }}%</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </td>
       <td>{{ m.email or '—' }}</td>
+      <td class="text-muted small" style="white-space:nowrap" {% if m.notes %}title="{{ m.notes }}"{% endif %}>
+        {% if m.start_date or m.end_date %}
+          {{ m.start_date or '…' }} → {{ m.end_date or 'present' }}
+          {% if m.notes %}<i class="bi bi-chat-left-text ms-1" style="font-size:.65rem;opacity:.6"></i>{% endif %}
+        {% else %}—{% endif %}
+      </td>
       <td class="text-muted small" style="white-space:nowrap">
         {% if st and st.last_updated %}
           {{ st.last_updated[:16] }}
@@ -23,7 +39,7 @@
       </td>
       <td class="text-end" style="white-space:nowrap">
         <button class="btn btn-outline-secondary btn-sm me-1"
-                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }})'>
+                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }}, {{ allocs|tojson }}, {{ (m.start_date or "")|tojson }}, {{ (m.end_date or "")|tojson }}, {{ (m.notes or "")|tojson }})'>
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn btn-danger btn-sm"
@@ -42,7 +58,7 @@
 
 <!-- Edit Member Modal -->
 <div class="modal fade" id="editMemberModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-sm modal-dialog-centered">
+  <div class="modal-dialog modal-md modal-dialog-centered">
     <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
       <div class="modal-header border-0 pb-1">
         <h6 class="modal-title fw-semibold">Edit Member</h6>
@@ -50,29 +66,55 @@
       </div>
       <div class="modal-body pt-1">
         <input type="hidden" id="edit-member-id">
-        <div class="mb-2">
-          <label class="form-label small mb-1">Full Name</label>
-          <input type="text" class="form-control form-control-sm" id="edit-member-name" placeholder="Full name">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Full Name</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-name" placeholder="Full name">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Username</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-username" placeholder="Q360 User ID">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Team</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-team" placeholder="Team name">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Type</label>
+            <select class="form-select form-select-sm" id="edit-member-type" onchange="onMemberTypeChange(this.value)">
+              <option value="Employee (100%)">Employee (100%)</option>
+              <option value="Employee (50%)">Employee (50%)</option>
+              <option value="Manager (50%)">Manager (50%)</option>
+              <option value="Contractor (100%)">Contractor (100%)</option>
+              <option value="Contractor (50%)">Contractor (50%)</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label small mb-1">Email</label>
+            <input type="email" class="form-control form-control-sm" id="edit-member-email" placeholder="Email (optional)">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">Start Date <span class="text-muted fw-normal">(hire date)</span></label>
+            <input type="date" class="form-control form-control-sm" id="edit-member-start-date">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small mb-1">End Date <span class="text-muted fw-normal">(departure)</span></label>
+            <input type="date" class="form-control form-control-sm" id="edit-member-end-date">
+          </div>
+          <div class="col-12">
+            <label class="form-label small mb-1">Notes</label>
+            <textarea class="form-control form-control-sm" id="edit-member-notes" rows="2" placeholder="Optional notes…"></textarea>
+          </div>
         </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1">Username</label>
-          <input type="text" class="form-control form-control-sm" id="edit-member-username" placeholder="Q360 User ID">
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1">Team</label>
-          <input type="text" class="form-control form-control-sm" id="edit-member-team" placeholder="Team name">
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1">Type</label>
-          <select class="form-select form-select-sm" id="edit-member-type">
-            <option value="Employee (100%)">Employee (100%)</option>
-            <option value="Employee (50%)">Employee (50%)</option>
-            <option value="Manager (50%)">Manager (50%)</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <label class="form-label small mb-1">Email</label>
-          <input type="email" class="form-control form-control-sm" id="edit-member-email" placeholder="Email (optional)">
+
+        <!-- Contractor project allocations (shown for Contractor types only) -->
+        <div id="contractor-alloc-section" style="display:none;margin-top:12px">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <label class="form-label small mb-0 fw-semibold">Project Allocations</label>
+            <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.72rem;padding:1px 8px" onclick="addAllocRow()">+ Add</button>
+          </div>
+          <div id="alloc-rows" style="max-height:200px;overflow-y:auto;overflow-x:hidden"></div>
+          <div class="text-muted" id="alloc-total-line" style="font-size:.75rem;margin-top:4px"></div>
         </div>
       </div>
       <div class="modal-footer border-0 pt-0 gap-2">
@@ -86,13 +128,55 @@
 <script>
 let _editMemberModal = null;
 
-function openEditMemberModal(id, username, name, team, email, memberType) {
+function onMemberTypeChange(val) {
+  const isContractor = val.startsWith('Contractor');
+  document.getElementById('contractor-alloc-section').style.display = isContractor ? '' : 'none';
+}
+
+function _allocRowHtml(projectName, pct, startDate, endDate) {
+  return `<div class="d-flex gap-1 mb-1 alloc-row align-items-center">
+    <input type="text" class="form-control form-control-sm alloc-project" placeholder="Project name" value="${projectName || ''}" oninput="updateAllocTotal()" style="flex:1;min-width:0">
+    <input type="number" class="form-control form-control-sm alloc-pct" placeholder="%" min="1" max="100" value="${pct || ''}" oninput="updateAllocTotal()" style="width:55px">
+    <input type="date" class="form-control form-control-sm alloc-start" title="Start" value="${startDate || ''}" style="width:130px">
+    <input type="date" class="form-control form-control-sm alloc-end" title="End" value="${endDate || ''}" style="width:130px">
+    <button type="button" class="btn btn-outline-danger btn-sm px-1" onclick="this.closest('.alloc-row').remove();updateAllocTotal()">✕</button>
+  </div>`;
+}
+
+function addAllocRow(projectName, pct, startDate, endDate) {
+  document.getElementById('alloc-rows').insertAdjacentHTML('beforeend', _allocRowHtml(projectName, pct, startDate, endDate));
+  updateAllocTotal();
+}
+
+function updateAllocTotal() {
+  let total = 0;
+  document.querySelectorAll('.alloc-pct').forEach(inp => {
+    const v = parseFloat(inp.value);
+    if (!isNaN(v)) total += v;
+  });
+  const el = document.getElementById('alloc-total-line');
+  el.textContent = total > 0 ? `Total: ${total}%` : '';
+  el.style.color = (total > 100) ? '#dc3545' : '#6c757d';
+}
+
+function openEditMemberModal(id, username, name, team, email, memberType, allocs, startDate, endDate, notes) {
   document.getElementById('edit-member-id').value = id;
   document.getElementById('edit-member-name').value = name || '';
   document.getElementById('edit-member-username').value = username;
   document.getElementById('edit-member-team').value = team;
   document.getElementById('edit-member-email').value = email || '';
   document.getElementById('edit-member-type').value = memberType || 'Employee (100%)';
+  document.getElementById('edit-member-start-date').value = startDate || '';
+  document.getElementById('edit-member-end-date').value = endDate || '';
+  document.getElementById('edit-member-notes').value = notes || '';
+  // Reset and populate allocations
+  document.getElementById('alloc-rows').innerHTML = '';
+  const isContractor = (memberType || '').startsWith('Contractor');
+  document.getElementById('contractor-alloc-section').style.display = isContractor ? '' : 'none';
+  if (allocs && allocs.length) {
+    allocs.forEach(a => addAllocRow(a.project_name, a.utilization_pct, a.start_date, a.end_date));
+  }
+  updateAllocTotal();
   if (!_editMemberModal) {
     _editMemberModal = new bootstrap.Modal(document.getElementById('editMemberModal'));
   }
@@ -101,19 +185,45 @@ function openEditMemberModal(id, username, name, team, email, memberType) {
 
 function saveEditMember() {
   const id = document.getElementById('edit-member-id').value;
+  const memberType = document.getElementById('edit-member-type').value;
+  // Collect contractor allocations
+  const allocRows = [];
+  if (memberType.startsWith('Contractor')) {
+    document.querySelectorAll('.alloc-row').forEach(row => {
+      const pname = row.querySelector('.alloc-project').value.trim();
+      const pct = parseFloat(row.querySelector('.alloc-pct').value);
+      if (pname && !isNaN(pct) && pct > 0) {
+        allocRows.push({
+          project_name: pname,
+          utilization_pct: pct,
+          start_date: row.querySelector('.alloc-start').value || '',
+          end_date: row.querySelector('.alloc-end').value || '',
+        });
+      }
+    });
+  }
   const fd = new FormData();
-  fd.append('name',        document.getElementById('edit-member-name').value.trim());
-  fd.append('username',    document.getElementById('edit-member-username').value.trim());
-  fd.append('team',        document.getElementById('edit-member-team').value.trim());
-  fd.append('email',       document.getElementById('edit-member-email').value.trim());
-  fd.append('member_type', document.getElementById('edit-member-type').value);
+  fd.append('name',                document.getElementById('edit-member-name').value.trim());
+  fd.append('username',            document.getElementById('edit-member-username').value.trim());
+  fd.append('team',                document.getElementById('edit-member-team').value.trim());
+  fd.append('email',               document.getElementById('edit-member-email').value.trim());
+  fd.append('member_type',         memberType);
+  fd.append('start_date',          document.getElementById('edit-member-start-date').value);
+  fd.append('end_date',            document.getElementById('edit-member-end-date').value);
+  fd.append('notes',               document.getElementById('edit-member-notes').value.trim());
+  fd.append('contractor_projects', JSON.stringify(allocRows));
   fetch('/admin/users/edit/' + id, { method: 'POST', body: fd,
     headers: { 'HX-Request': 'true' } })
     .then(r => r.text())
     .then(html => {
-      document.getElementById('members-table').innerHTML = html;
+      const modalEl = document.getElementById('editMemberModal');
+      // Wait for hide animation to fully complete before replacing the DOM
+      modalEl.addEventListener('hidden.bs.modal', function() {
+        _editMemberModal = null;
+        document.getElementById('members-table').innerHTML = html;
+        if (window.htmx) htmx.process(document.getElementById('members-table'));
+      }, { once: true });
       _editMemberModal.hide();
-      if (window.htmx) htmx.process(document.getElementById('members-table'));
     });
 }
 </script>

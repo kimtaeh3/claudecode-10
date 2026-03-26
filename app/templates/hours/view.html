@@ -38,11 +38,12 @@
 
   <div class="col-12">
     <div class="d-flex gap-2">
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setWeek()">This Week</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setMonth()">This Month</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLastMonth()">Last Month</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setLast3Months()">Last 3 Months</button>
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setYear()">This Year</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setWeek(this)">This Week</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setMonth(this)">This Month</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setLastMonth(this)">Last Month</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setLast3Months(this)">Last 3 Months</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setLast6Months(this)">Last 6 Months</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" onclick="setYear(this)">This Year</button>
     </div>
   </div>
 </form>
@@ -74,6 +75,54 @@
     </div>
   </div>
 </div>
+
+<script>
+// Date preset helpers — update fields only, do NOT submit
+function _setDates(start, end, btn) {
+  document.getElementById('start').value = start;
+  document.getElementById('end').value = end;
+  document.querySelectorAll('.preset-btn').forEach(b => {
+    b.classList.remove('btn-secondary');
+    b.classList.add('btn-outline-secondary');
+  });
+  if (btn) {
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-secondary');
+  }
+}
+function _fmt(d) { return d.toISOString().slice(0, 10); }
+
+function setWeek(btn) {
+  const today = new Date();
+  const mon = new Date(today); mon.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  _setDates(_fmt(mon), _fmt(sun), btn);
+}
+function setMonth(btn) {
+  const today = new Date();
+  _setDates(_fmt(new Date(today.getFullYear(), today.getMonth(), 1)),
+            _fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0)), btn);
+}
+function setLastMonth(btn) {
+  const today = new Date();
+  _setDates(_fmt(new Date(today.getFullYear(), today.getMonth() - 1, 1)),
+            _fmt(new Date(today.getFullYear(), today.getMonth(), 0)), btn);
+}
+function setLast3Months(btn) {
+  const today = new Date();
+  _setDates(_fmt(new Date(today.getFullYear(), today.getMonth() - 3, 1)),
+            _fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0)), btn);
+}
+function setLast6Months(btn) {
+  const today = new Date();
+  _setDates(_fmt(new Date(today.getFullYear(), today.getMonth() - 6, 1)),
+            _fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0)), btn);
+}
+function setYear(btn) {
+  const y = new Date().getFullYear();
+  _setDates(`${y}-01-01`, `${y}-12-31`, btn);
+}
+</script>
 
 <script>
 (function () {
