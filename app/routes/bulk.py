@@ -343,22 +343,33 @@ def parse():
     if not file:
         return '<div class="alert alert-danger">Please provide a file.</div>'
     date_filter = request.form.get('date_filter', 'month')
-    try:
-        grouped = _parse_excel(file)
-        grouped = _apply_username_corrections(grouped)
-        grouped = _filter_by_date(grouped, date_filter)
-    except Exception as e:
-        import traceback as _tb2
-        return (f'<div class="alert alert-danger">Failed to parse file: {e}'
-                f'<pre style="font-size:.75rem;white-space:pre-wrap">{_tb2.format_exc()}</pre></div>')
-    if not grouped:
-        return '<div class="alert alert-warning">No entries found for the selected date range.</div>'
+    # Read file bytes eagerly so the stream can start immediately (parsing happens inside the generator)
+    import io as _io
+    file_bytes = file.read()
+    file_name  = file.filename
 
     def _evt(obj):
         return f'data: {_json.dumps(obj)}\n\n'
 
-    def generate(grouped):
+    def generate():
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        # Parse Excel inside the stream so the SSE connection opens immediately
+        yield _evt({'type': 'progress', 'done': 0, 'total': 1, 'user': '', 'msg': 'Reading Excel file\u2026'})
+        try:
+            fake_file = _io.BytesIO(file_bytes)
+            fake_file.filename = file_name
+            grouped = _parse_excel(fake_file)
+            grouped = _apply_username_corrections(grouped)
+            grouped = _filter_by_date(grouped, date_filter)
+        except Exception as e:
+            yield _evt({'type': 'error', 'html':
+                        f'<div class="alert alert-danger">Failed to parse file: {e}</div>'})
+            return
+        if not grouped:
+            yield _evt({'type': 'error', 'html':
+                        '<div class="alert alert-warning">No entries found for the selected date range.</div>'})
+            return
+
         try:
             svc = _svc()
         except Exception as e:
@@ -448,7 +459,7 @@ def parse():
                         f'<pre style="font-size:.75rem;white-space:pre-wrap">{err}</pre></div>'})
 
     return Response(
-        stream_with_context(generate(grouped)),
+        stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={'X-Accel-Buffering': 'no', 'Cache-Control': 'no-cache'},
     )
