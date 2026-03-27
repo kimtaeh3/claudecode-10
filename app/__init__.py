@@ -56,6 +56,15 @@ def create_app():
             _db.execute("ALTER TABLE saved_filter ADD COLUMN usernames TEXT NOT NULL DEFAULT ''")
         if 'project' not in _sf_cols:
             _db.execute("ALTER TABLE saved_filter ADD COLUMN project TEXT NOT NULL DEFAULT ''")
+        # User project preference: remembers which task ID to use per username+description
+        _db.execute(
+            "CREATE TABLE IF NOT EXISTS user_project_pref ("
+            "username TEXT NOT NULL, "
+            "description TEXT NOT NULL, "
+            "task_id TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), "
+            "PRIMARY KEY (username, description))"
+        )
         # Default non-billable project pattern
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"

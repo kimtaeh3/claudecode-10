@@ -235,7 +235,7 @@ def index():
         WHERE bh.date >= ? AND bh.date <= ?
     '''
     params = [start, end]
-    if team_filter and team_filter != 'All':
+    if team_filter and team_filter not in ('All', 'selected'):
         q += (" AND bh.username IN (SELECT username FROM team_member "
               "WHERE INSTR(',' || team || ',', ',' || ? || ',') > 0)")
         params.append(team_filter)
@@ -302,7 +302,7 @@ def index():
             user_max_date[u] = r['date']
 
     # Include team members with no bulk_hours so they still appear with zeros
-    if team_filter and team_filter != 'All':
+    if team_filter and team_filter not in ('All', 'selected'):
         zero_members = db.execute(
             "SELECT username FROM team_member "
             "WHERE INSTR(',' || team || ',', ',' || ? || ',') > 0",
@@ -323,12 +323,12 @@ def index():
 
     # Inject synthetic billable hours for contractors (no Q360 data)
     def _weeks_in_range(s: str, e: str) -> set:
+        """Return all %Y-W%W keys in range, iterating day-by-day to catch year-boundary splits."""
         sd, ed = date.fromisoformat(s), date.fromisoformat(e)
         keys, d = set(), sd
         while d <= ed:
             keys.add(d.strftime('%Y-W%W'))
-            d += timedelta(days=7)
-        keys.add(ed.strftime('%Y-W%W'))
+            d += timedelta(days=1)
         return keys
 
     contractor_week_keys = set()
@@ -505,6 +505,20 @@ def save_filter():
         (session['user_id'],)
     ).fetchall()
     return jsonify({'filters': [dict(f) for f in filters]})
+
+
+@bp.route('/filters/rename/<int:filter_id>', methods=['POST'])
+@login_required
+def rename_filter(filter_id):
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    db = get_db()
+    db.execute('UPDATE saved_filter SET name = ? WHERE id = ? AND username = ?',
+               (name, filter_id, session['user_id']))
+    db.commit()
+    return jsonify({'ok': True})
 
 
 @bp.route('/filters/delete/<int:filter_id>', methods=['DELETE'])

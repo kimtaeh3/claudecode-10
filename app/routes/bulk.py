@@ -470,6 +470,30 @@ def _do_parse(grouped, live_by_user):
             return 0.0
         return sum(1 for w in words if w in desc) / len(words)
 
+    # Non-billable Q360 description prefixes
+    _NON_BILL_PREFIXES = (
+        'ADMINISTRATION', 'ON-CALL', 'PERSONAL TIME-OFF',
+        'STATUTORY HOLIDAY', 'TRAINING', 'VACATION',
+    )
+
+    def _is_nonbill(desc):
+        d = desc.upper()
+        return any(d.startswith(p) for p in _NON_BILL_PREFIXES)
+
+    # Excel customer names that are non-billable and the Q360 description they map to
+    _EXCEL_NONBILL_MAP = {
+        'SICK':             'PERSONAL TIME-OFF',
+        'PTO':              'PERSONAL TIME-OFF',
+        'VACATION':         'VACATION',
+        'HOLIDAY':          'STATUTORY HOLIDAY',
+        'STAT':             'STATUTORY HOLIDAY',
+        'ADMINISTRATION':   'ADMINISTRATION',
+        'ADMIN':            'ADMINISTRATION',
+        'ON-CALL':          'ON-CALL',
+        'ONCALL':           'ON-CALL',
+        'TRAINING':         'TRAINING',
+    }
+
     try:
         # Guess resq_zoom_key for each row by text-matching Excel Project → Q360 description
         for u in grouped:
@@ -483,21 +507,44 @@ def _do_parse(grouped, live_by_user):
                     if desc:
                         r['customer'] = desc
                     continue
+
+                # Check if the Excel customer is a known non-billable type — if so,
+                # find the matching Q360 non-billable task instead of a billable project
+                cust_upper = r.get('customer', '').upper().strip()
+                target_nb_desc = _EXCEL_NONBILL_MAP.get(cust_upper)
+                if target_nb_desc:
+                    best_nb_rzk, best_nb_id = None, -1
+                    for rzk, item in live.items():
+                        desc = item.get('description', '').upper()
+                        if desc.startswith(target_nb_desc.upper()):
+                            if int(rzk) > best_nb_id:
+                                best_nb_id, best_nb_rzk = int(rzk), rzk
+                    if best_nb_rzk:
+                        item = live[best_nb_rzk]
+                        r['q360id']          = best_nb_rzk
+                        r['customer']        = item.get('description', '').strip()
+                        r['category']        = item.get('category', '') or DEFAULT_CATEGORY
+                        r['needs_attention'] = False
+                        r['project_guessed'] = True
+                        r['suggested']       = True
+                    continue  # don't fall through to billable matching
+
                 best_rzk, best_score, first_rzk = None, 0.0, None
                 for rzk, item in live.items():
                     if Q360Service._is_admin_project(item.get('title', '')):
                         continue
+                    if _is_nonbill(item.get('description', '')):
+                        continue  # never auto-assign non-billable Q360 task to a billable Excel row
                     if first_rzk is None:
                         first_rzk = rzk
                     score = _match_score(r.get('customer', ''), r.get('project', ''),
                                          item.get('description', ''))
                     if score > best_score:
                         best_score, best_rzk = score, rzk
-                # Always pick best match (or first project if no text match)
-                chosen = best_rzk or first_rzk
-                if chosen:
-                    item = live[chosen]
-                    r['q360id']          = chosen
+                # Only auto-assign if there's an actual text match — never fall through to first project
+                if best_rzk and best_score > 0:
+                    item = live[best_rzk]
+                    r['q360id']          = best_rzk
                     r['customer']        = item.get('description', '').strip()
                     r['category']        = item.get('category', '') or DEFAULT_CATEGORY
                     r['needs_attention'] = False
@@ -523,8 +570,13 @@ def _do_parse(grouped, live_by_user):
                 project  = r.get('project', '').strip()
                 if not customer and not project:
                     continue
+                # Skip non-billable rows — don't match them to billable pool projects
+                if _EXCEL_NONBILL_MAP.get(customer.upper()):
+                    continue
                 best_rzk, best_score = None, 0.0
                 for rzk, item in all_pool.items():
+                    if _is_nonbill(item.get('description', '')):
+                        continue
                     score = _match_score(customer, project, item.get('description', ''))
                     if score > best_score:
                         best_score, best_rzk = score, rzk
@@ -555,21 +607,22 @@ def _do_parse(grouped, live_by_user):
             }
 
         # Non-billable descriptions that should appear only once (highest Q360 ID wins)
-        _NON_BILL_PREFIXES = (
-            'ADMINISTRATION', 'ON-CALL', 'PERSONAL TIME-OFF',
-            'STATUTORY HOLIDAY', 'TRAINING', 'VACATION',
-        )
+        pass  # _NON_BILL_PREFIXES and _is_nonbill defined before try block above
 
-        def _is_nonbill(desc):
-            d = desc.upper()
-            return any(d.startswith(p) for p in _NON_BILL_PREFIXES)
+        # Load saved task-ID preferences per user from DB
+        from app.db import get_db as _get_db
+        _db = _get_db()
+        _pref_rows = _db.execute('SELECT username, description, task_id FROM user_project_pref').fetchall()
+        _prefs = {}  # (username, description) → task_id
+        for row in _pref_rows:
+            _prefs[(row['username'], row['description'])] = row['task_id']
 
         user_projects = {}
         for u in grouped:
             live = live_by_user.get(u['username'], {})
             source = live if live else all_pool
-            billable_combos = []
-            nonbill_best = {}  # description → (rzk, item) keeping highest numeric rzk
+            billable_by_desc = {}  # description → list of (rzk, item)
+            nonbill_best = {}      # normalized description → (rzk, item) keeping highest numeric rzk
             for rzk, item in source.items():
                 if Q360Service._is_admin_project(item.get('title', '')):
                     continue
@@ -582,7 +635,19 @@ def _do_parse(grouped, live_by_user):
                     if cur is None or int(rzk) > int(cur[0]):
                         nonbill_best[key] = (rzk, item)
                 else:
-                    billable_combos.append(_make_combo(rzk, item))
+                    billable_by_desc.setdefault(desc, []).append((rzk, item))
+
+            # For each billable description, pick preferred task_id if saved; else use lowest ID
+            billable_combos = []
+            for desc, candidates in billable_by_desc.items():
+                pref_id = _prefs.get((u['username'], desc))
+                if pref_id:
+                    match = next(((rzk, item) for rzk, item in candidates if rzk == pref_id), None)
+                    chosen = match or candidates[0]
+                else:
+                    chosen = min(candidates, key=lambda x: int(x[0]))
+                billable_combos.append(_make_combo(chosen[0], chosen[1]))
+
             combos = billable_combos + [_make_combo(rzk, item) for rzk, item in nonbill_best.values()]
             user_projects[u['username']] = sorted(combos, key=lambda p: p['customer'].lower())
 
@@ -825,6 +890,33 @@ def _submit_stream(entries):
             yield _evt({'type': 'progress', 'phase': 'submit', 'done': done, 'total': total,
                         'msg': f'Submitting \u2014 {e.get("username", "")} {d.get("day", "")} {d.get("date", "")}',
                         'user': e.get('username', '')})
+
+    # Save username+description→task_id preferences for every successfully submitted entry
+    try:
+        from app.db import get_db as _get_db
+        _db = _get_db()
+        seen_prefs = set()
+        for e in entries:
+            if e.get('needs_attention') or not e.get('q360id'):
+                continue
+            username = e.get('username', '').strip()
+            desc = e.get('customer', '').strip()
+            task_id = e['q360id']
+            if not username or not desc:
+                continue
+            key = (username, desc)
+            if key in seen_prefs:
+                continue
+            seen_prefs.add(key)
+            _db.execute(
+                "INSERT INTO user_project_pref (username, description, task_id, updated_at) "
+                "VALUES (?, ?, ?, datetime('now','localtime')) "
+                "ON CONFLICT(username, description) DO UPDATE SET task_id=excluded.task_id, updated_at=excluded.updated_at",
+                (username, desc, task_id)
+            )
+        _db.commit()
+    except Exception:
+        pass
 
     try:
         html = render_template('bulk/_result.html', results=results)

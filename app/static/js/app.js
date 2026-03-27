@@ -47,12 +47,14 @@ function setLastMonth() {
 function setLast3Months() {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  _setDates(first, now, 'month');
+  const last  = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+  _setDates(first, last, 'month');
 }
 function setLast6Months() {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-  _setDates(first, now, 'month');
+  const last  = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+  _setDates(first, last, 'month');
 }
 // Block all clicks during HTMX requests (except project lazy-load on submit page)
 const overlay = document.getElementById('htmx-overlay');

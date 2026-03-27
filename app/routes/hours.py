@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 import pandas
-from flask import Blueprint, render_template, request, session, redirect, url_for
+from flask import Blueprint, render_template, request, session, redirect, url_for, jsonify
 from app.routes.auth import login_required
 from app.services.q360 import Q360Service, CATEGORIES, COMPANIES
 from app.db import get_db
@@ -157,17 +157,77 @@ def projects():
     user_id = (request.args.get('target_user') or
                request.args.get('user') or
                session['user_id'])
+    _NON_BILL_PREFIXES = (
+        'ADMINISTRATION', 'ON-CALL', 'PERSONAL TIME-OFF', 'PERSONNAL TIME-OFF',
+        'STATUTORY HOLIDAY', 'TRAINING', 'VACATION',
+    )
+
+    def _is_nonbill(desc):
+        d = desc.upper()
+        return any(d.startswith(p) for p in _NON_BILL_PREFIXES)
+
     try:
         svc = _svc()
         projects = svc.get_projects(user_id)
-        items = [
-            (v['description'], k) for k, v in projects.items()
-            if not Q360Service._is_admin_project(v.get('title', ''))
-            and v.get('description', '').strip()
-        ]
+        # Load saved preferences for this user
+        db = get_db()
+        pref_rows = db.execute(
+            'SELECT description, task_id FROM user_project_pref WHERE username = ?', (user_id,)
+        ).fetchall()
+        prefs = {row['description']: row['task_id'] for row in pref_rows}
+
+        billable_by_desc = {}  # description → list of task_ids
+        nonbill_best = {}      # normalized description → (rzk, desc)
+        for k, v in projects.items():
+            if Q360Service._is_admin_project(v.get('title', '')):
+                continue
+            desc = v.get('description', '').strip()
+            if not desc:
+                continue
+            if _is_nonbill(desc):
+                key = desc.upper().replace('PERSONNAL', 'PERSONAL')
+                cur = nonbill_best.get(key)
+                if cur is None or int(k) > int(cur[0]):
+                    nonbill_best[key] = (k, desc)
+            else:
+                billable_by_desc.setdefault(desc, []).append(k)
+
+        billable = []
+        for desc, task_ids in billable_by_desc.items():
+            pref_id = prefs.get(desc)
+            if pref_id and pref_id in task_ids:
+                chosen = pref_id
+            else:
+                chosen = min(task_ids, key=lambda x: int(x))
+            billable.append((desc, chosen))
+        items = sorted(billable) + [(desc, rzk) for rzk, desc in nonbill_best.values()]
     except Exception:
         items = []
     return render_template('hours/_projects.html', items=items)
+
+
+@bp.route('/projects/debug')
+@login_required
+def projects_debug():
+    """Return raw Q360 project fields for a user — useful for comparing duplicate task IDs.
+    Optional: ?user=username, ?ids=61082234,78910102 to filter to specific task IDs."""
+    user_id = request.args.get('user') or session['user_id']
+    filter_ids = set(request.args.get('ids', '').split(',')) - {''}
+    try:
+        svc = _svc()
+        projects = svc.get_projects(user_id)
+        FIELDS = ['description', 'title', 'projecttitle', 'opporno', 'projectno',
+                  'company', 'sitecity', 'invoiceno', 'category']
+        rows = []
+        for rzk, item in sorted(projects.items(), key=lambda x: x[1].get('description', '')):
+            if filter_ids and rzk not in filter_ids:
+                continue
+            row = {f: item.get(f, '') for f in FIELDS}
+            row['resq_zoom_key'] = rzk
+            rows.append(row)
+        return jsonify(rows)
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
 
 
 @bp.route('/submit', methods=['GET'])

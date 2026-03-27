@@ -9,7 +9,8 @@
   <input type="hidden" name="view" id="filter-view" value="{{ view_mode }}">
   <div class="col-auto">
     <label class="form-label small mb-1">Team</label>
-    <select name="team" class="form-select form-select-sm" style="width:auto">
+    <select name="team" id="team-select" class="form-select form-select-sm" style="width:auto" onchange="onTeamChange(this)">
+      <option value="selected" {% if team_filter == 'selected' %}selected{% endif %} style="display:none">Selected</option>
       {% for t in teams %}
       <option value="{{ t }}" {% if t == team_filter %}selected{% endif %}>{{ t }}</option>
       {% endfor %}
@@ -39,20 +40,25 @@
     {# Saved filters dropdown #}
     {% if saved_filters %}
     <div class="dropdown">
-      <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+      <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
         Saved Filters
       </button>
       <ul class="dropdown-menu dropdown-menu-end" style="min-width:260px">
         {% for f in saved_filters %}
-        <li class="d-flex align-items-center px-2 py-1 gap-2">
+        <li class="d-flex align-items-center px-2 py-1 gap-1" id="sf-row-{{ f.id }}">
           <a class="dropdown-item py-0 px-1 flex-grow-1" href="javascript:void(0)"
              onclick='applyFilter({{ f.team|tojson }}, {{ f.start|tojson }}, {{ f.end|tojson }}, {{ (f.usernames or "")|tojson }}, {{ (f.project or "")|tojson }})'>
-            <span class="fw-semibold" style="font-size:.85rem">{{ f.name }}</span>
+            <span class="fw-semibold sf-name-label" style="font-size:.85rem">{{ f.name }}</span>
             <span class="text-muted d-block" style="font-size:.72rem">{{ f.team }} · {{ f.start }} → {{ f.end }}{% if f.usernames %} · {{ f.usernames.split(',')|length }} user{{ 's' if f.usernames.split(',')|length != 1 }}{% endif %}{% if f.project %} · "{{ f.project }}"{% endif %}</span>
           </a>
-          <button class="btn btn-link btn-sm text-danger p-0 ms-1" title="Delete"
+          <button class="btn btn-link btn-sm text-secondary px-1 py-0" title="Rename"
+                  data-sf-id="{{ f.id }}" data-sf-name="{{ f.name }}"
+                  onclick="startRenameFilter(this, event)">
+            <i class="bi bi-pencil" style="font-size:.85rem"></i>
+          </button>
+          <button class="btn btn-link btn-sm text-danger px-1 py-0" title="Delete"
                   onclick="deleteFilter({{ f.id }}, event)">
-            <i class="bi bi-x-lg" style="font-size:.7rem"></i>
+            <i class="bi bi-x-lg" style="font-size:.85rem"></i>
           </button>
         </li>
         {% endfor %}
@@ -71,6 +77,26 @@
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportTableCSV()">
       <i class="bi bi-file-earmark-excel me-1"></i>Export
     </button>
+  </div>
+</div>
+
+{# Rename Filter Modal #}
+<div class="modal fade" id="renameFilterModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-semibold">Rename Filter</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-1">
+        <input type="text" id="rename-filter-name" class="form-control form-control-sm"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();saveRenameFilter();}">
+      </div>
+      <div class="modal-footer border-0 pt-0 gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveRenameFilter()">Save</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -104,20 +130,22 @@
 {% set nb_display = ['Holiday', 'Vacation', 'ADMIN'] %}
 
 {# ── Available hours info bar ── #}
-<div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+<div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
   <input type="text" id="project-filter" class="form-control form-control-sm" placeholder="Filter by project name…"
          style="max-width:320px" oninput="filterByProject(this.value)" value="{{ project_filter }}">
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearProjectFilter()">Clear</button>
   <span id="project-filter-count" class="text-muted small"></span>
-  <span id="user-sel-badge" class="d-inline-flex align-items-center gap-1 text-muted small" style="display:none!important">
-    <span id="user-sel-count"></span> user(s) selected
-    <button type="button" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;padding:1px 8px" onclick="filterBySelectedUsers()">Filter</button>
-    <button type="button" class="btn btn-link btn-sm p-0 text-danger" style="font-size:.75rem" onclick="clearUserSelection()">clear</button>
-  </span>
   <div class="ms-auto btn-group btn-group-sm" role="group" aria-label="View mode">
     <button type="button" class="btn btn-outline-secondary" id="btn-week-view" onclick="toggleViewMode('week')">Weeks</button>
     <button type="button" class="btn btn-secondary active" id="btn-month-view" onclick="toggleViewMode('month')">Months</button>
   </div>
+</div>
+<div class="mb-2" id="user-sel-badge" style="display:none!important">
+  <span class="d-inline-flex align-items-center gap-2 small px-2 py-1" style="border:1.5px solid #dc3545;border-radius:6px;color:#dc3545">
+    <span id="user-sel-count"></span> user(s) selected
+    <button type="button" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;padding:1px 8px" onclick="filterBySelectedUsers()">Filter</button>
+    <button type="button" class="btn btn-link btn-sm p-0 text-danger" style="font-size:.75rem" onclick="clearUserSelection()">clear</button>
+  </span>
 </div>
 
 <div class="d-flex align-items-center gap-3 mb-2" style="font-size:.8rem;color:#6c757d">
@@ -639,9 +667,11 @@ function onUserCheckChange() {
     sa.indeterminate = checkedVisible.length > 0 && checkedVisible.length < visibleAll.length;
     sa.checked = visibleAll.length > 0 && checkedVisible.length === visibleAll.length;
   }
+  const allChecks = document.querySelectorAll('.user-check');
   const checked = document.querySelectorAll('.user-check:checked');
   const badge = document.getElementById('user-sel-badge');
-  if (checked.length > 0) {
+  // Show only when some (but not all) users are selected
+  if (checked.length > 0 && checked.length < allChecks.length) {
     document.getElementById('user-sel-count').textContent = checked.length;
     badge.style.removeProperty('display');
   } else {
@@ -744,10 +774,31 @@ function saveFilter() {
 }
 
 function applyFilter(team, start, end, usernames, project) {
-  const params = new URLSearchParams({ team, start, end });
+  // When specific users are saved in the filter, use "selected" team so date changes don't reset them
+  const params = new URLSearchParams({ team: usernames ? 'selected' : team, start, end });
   if (usernames) params.set('users', usernames);
   if (project) params.set('project', project);
   window.location.href = '/forecast/?' + params.toString();
+}
+
+function _closeFiltersDropdown() {
+  const toggle = document.querySelector('[data-bs-toggle="dropdown"][data-bs-auto-close="outside"]');
+  if (toggle) bootstrap.Dropdown.getInstance(toggle)?.hide();
+}
+
+function onTeamChange(sel) {
+  // Switching to a real team clears user selection
+  if (sel.value !== 'selected') {
+    document.getElementById('filter-users').value = '';
+    document.querySelectorAll('.user-check').forEach(cb => cb.checked = false);
+  }
+}
+
+function _setTeamSelected() {
+  const sel = document.getElementById('team-select');
+  if (sel && sel.value !== 'selected') {
+    sel.value = 'selected';
+  }
 }
 
 function exportTableCSV() {
@@ -805,15 +856,49 @@ function deleteFilter(id, e) {
     .then(() => location.reload());
 }
 
-// Capture checked users + project before form submit
+let _renameFilterId = null;
+let _renameFilterModal = null;
+function startRenameFilter(btn, e) {
+  e.stopPropagation();
+  e.preventDefault();
+  _renameFilterId = btn.dataset.sfId;
+  const currentName = btn.dataset.sfName;
+  _closeFiltersDropdown();
+  if (!_renameFilterModal) _renameFilterModal = new bootstrap.Modal(document.getElementById('renameFilterModal'));
+  document.getElementById('rename-filter-name').value = currentName;
+  _renameFilterModal.show();
+  document.getElementById('renameFilterModal').addEventListener('shown.bs.modal', function() {
+    const inp = document.getElementById('rename-filter-name');
+    inp.focus(); inp.select();
+  }, { once: true });
+}
+function saveRenameFilter() {
+  const newName = document.getElementById('rename-filter-name').value.trim();
+  if (!newName || !_renameFilterId) return;
+  fetch(`/forecast/filters/rename/${_renameFilterId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: newName})
+  }).then(() => location.reload());
+}
+
+// Capture checked users + project before form submit; watch checkboxes to switch team to "Selected"
 (function() {
   const form = document.getElementById('forecast-form');
   if (form) {
     form.addEventListener('submit', function() {
       const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
       document.getElementById('filter-users').value = checked.join(',');
+      if (checked.length > 0) _setTeamSelected();
     });
   }
+  // When any user checkbox changes, switch team dropdown to "Selected"
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('user-check')) {
+      const anyChecked = document.querySelectorAll('.user-check:checked').length > 0;
+      if (anyChecked) _setTeamSelected();
+    }
+  });
   // Apply server-provided view mode on page load, then scroll to show summary columns
   setTimeout(() => {
     toggleViewMode({{ view_mode|tojson }});
