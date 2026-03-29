@@ -198,7 +198,7 @@ def projects():
             if pref_id and pref_id in task_ids:
                 chosen = pref_id
             else:
-                chosen = min(task_ids, key=lambda x: int(x))
+                chosen = task_ids[0]
             billable.append((desc, chosen))
         items = sorted(billable) + [(desc, rzk) for rzk, desc in nonbill_best.values()]
     except Exception:

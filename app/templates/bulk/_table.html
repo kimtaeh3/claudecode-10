@@ -931,9 +931,9 @@ function applyProjectChoice(sel) {
   window.filterByWeek   = filterByWeek;
 })();
 
-let _editUsernameIdx = null;
-let _editUsernameModal = null;
-let _editOldUsername = null;
+window._editUsernameIdx = window._editUsernameIdx ?? null;
+window._editUsernameModal = window._editUsernameModal ?? null;
+window._editOldUsername = window._editOldUsername ?? null;
 
 function openEditUsernameModal(idx, employee, currentUsername) {
   _editUsernameIdx = idx;
@@ -1012,7 +1012,7 @@ async function loadUserProjects(username) {
   }
 
   if (failed || options.length === 0) {
-    // Flag user with bad-username badge
+    // Flag user with bad-username badge and clear their dropdowns (no options available)
     if (hdr) {
       const td = hdr.querySelector('td:first-child');
       if (td) {
@@ -1024,6 +1024,16 @@ async function loadUserProjects(username) {
         td.appendChild(badge);
       }
     }
+    // Clear all project dropdowns for this user so fallback options don't appear
+    document.querySelectorAll('tr[data-username="' + username + '"] .project-field').forEach(sel => {
+      sel.innerHTML = '<option value="">— select —</option>';
+      sel.disabled = true;
+      const tr = sel.closest('tr');
+      const q360Field = tr.querySelector('.q360id-field');
+      const display = tr.querySelector('.q360id-display');
+      if (q360Field) q360Field.value = '';
+      if (display) display.textContent = '';
+    });
     window.validate && window.validate();
     return;
   }
@@ -1061,7 +1071,8 @@ async function loadUserProjects(username) {
 
   // Rebuild all .project-field selects for this user
   document.querySelectorAll('tr[data-username="' + username + '"] .project-field').forEach(sel => {
-    const currentQ360 = sel.closest('tr').querySelector('.q360id-field')?.value || '';
+    const tr = sel.closest('tr');
+    const currentQ360 = tr.querySelector('.q360id-field')?.value || '';
     sel.innerHTML = '<option value="">— select —</option>';
     sorted.forEach(opt => {
       const o = document.createElement('option');
@@ -1071,9 +1082,26 @@ async function loadUserProjects(username) {
       if (opt.value === currentQ360) o.selected = true;
       sel.appendChild(o);
     });
-    // Sync display if already selected
+    // If currentQ360 was already set but doesn't appear in the new options (different task ID
+    // chosen by the server vs what _do_parse put in the row), preserve it so the row stays matched.
+    if (currentQ360 && !sel.value) {
+      const preserved = document.createElement('option');
+      preserved.value = currentQ360;
+      preserved.dataset.q360 = currentQ360;
+      // Find a label from sorted options that matches by description prefix, else use ID only
+      const matchedLabel = sorted.find(o => {
+        const lbl = o.textContent.trim();
+        const dashIdx = lbl.lastIndexOf(' — ');
+        return dashIdx >= 0 && lbl.slice(dashIdx + 3) === currentQ360;
+      });
+      preserved.textContent = matchedLabel
+        ? matchedLabel.textContent.trim()
+        : currentQ360;
+      preserved.selected = true;
+      sel.appendChild(preserved);
+    }
+    // Sync display if a project is selected
     if (sel.value) {
-      const tr = sel.closest('tr');
       const q360Field = tr.querySelector('.q360id-field');
       const display = tr.querySelector('.q360id-display');
       if (q360Field) q360Field.value = sel.value;
