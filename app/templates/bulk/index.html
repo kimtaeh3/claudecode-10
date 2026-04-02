@@ -2,128 +2,100 @@
 {% block title %}Bulk Upload{% endblock %}
 {% block content %}
 
-<div class="row justify-content-center mt-3">
+{% set active_tab = request.args.get('tab', 'q360') %}
+
+<div class="row justify-content-center mt-4">
   <div class="col-lg-5 col-md-7">
 
-    <!-- Tab nav -->
-    <ul class="nav nav-tabs mb-0" id="bulkTabs" role="tablist"
-        style="border-bottom:none">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active fw-semibold" id="q360-tab"
-                data-bs-toggle="tab" data-bs-target="#q360-panel"
-                type="button" role="tab">Q360</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link fw-semibold" id="overtime-tab"
-                data-bs-toggle="tab" data-bs-target="#overtime-panel"
-                type="button" role="tab">Overtime</button>
-      </li>
-    </ul>
+    {% if active_tab == 'overtime' %}
+    <!-- ── Overtime ────────────────────────────────────────────────────── -->
+    <div class="card shadow-sm border-0" style="border-radius:12px;overflow:hidden">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1">Overtime Upload</h5>
+        <p class="text-muted small mb-4">Upload an overtime Excel file to generate a formatted output with pay periods.</p>
 
-    <div class="tab-content">
+        <form id="overtime-form" method="POST" action="{{ url_for('bulk.overtime_parse') }}" enctype="multipart/form-data">
 
-      <!-- ── Q360 tab ─────────────────────────────────────────────────── -->
-      <div class="tab-pane fade show active" id="q360-panel" role="tabpanel">
-        <div class="card shadow-sm border-0" style="border-radius:0 12px 12px 12px;overflow:hidden">
-          <div class="card-body p-4">
-            <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
-            <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
-
-            <form id="parse-form">
-
-              <!-- File picker -->
-              <div class="mb-4">
-                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
-                <label id="file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
-                       style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
-                  <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
-                       style="width:36px;height:36px">
-                    <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
-                  </div>
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div id="file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
-                  </div>
-                  <input type="file" name="file" accept=".xlsx,.xlsb" required
-                         class="d-none" id="file-input"
-                         onchange="onFileChange(this, 'file-name', 'file-label')">
-                </label>
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
+            <label id="ot-file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
+                   style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
+              <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                   style="width:36px;height:36px">
+                <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
               </div>
-
-              <!-- Date range -->
-              <div class="mb-4">
-                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
-                <input type="hidden" name="date_filter" id="date-filter-input" value="month">
-                <div class="d-flex gap-1 flex-nowrap">
-                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="all"        onclick="pickPreset('all')">All</button>
-                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="week"       onclick="pickPreset('week')">This Week</button>
-                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="last_month" onclick="pickPreset('last_month')">Last Month</button>
-                  <button type="button" class="date-preset-btn btn btn-primary border-0 px-2" style="font-size:.75rem;white-space:nowrap" data-preset="month" onclick="pickPreset('month')">This Month</button>
-                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="year"       onclick="pickPreset('year')">This Year</button>
-                </div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div id="ot-file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
               </div>
-
-              <!-- Submit -->
-              <button type="submit" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
-                Parse File
-              </button>
-
-            </form>
+              <input type="file" name="file" accept=".xlsx,.xlsb" required
+                     class="d-none" id="ot-file-input"
+                     onchange="onFileChange(this, 'ot-file-name', 'ot-file-label')">
+            </label>
           </div>
-        </div>
-      </div><!-- /q360-panel -->
 
-      <!-- ── Overtime tab ──────────────────────────────────────────────── -->
-      <div class="tab-pane fade" id="overtime-panel" role="tabpanel">
-        <div class="card shadow-sm border-0" style="border-radius:0 12px 12px 12px;overflow:hidden">
-          <div class="card-body p-4">
-            <h5 class="fw-bold mb-1">Overtime Upload</h5>
-            <p class="text-muted small mb-4">Upload an overtime Excel file to generate a formatted output with pay periods.</p>
+          <div id="ot-error" class="alert alert-danger d-none mb-3"></div>
 
-            <form id="overtime-form" method="POST" action="{{ url_for('bulk.overtime_parse') }}" enctype="multipart/form-data">
+          <button type="submit" id="ot-submit-btn" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
+            Parse File
+          </button>
+        </form>
+      </div>
+    </div>
 
-              <!-- File picker -->
-              <div class="mb-4">
-                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
-                <label id="ot-file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
-                       style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
-                  <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
-                       style="width:36px;height:36px">
-                    <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
-                  </div>
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div id="ot-file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
-                  </div>
-                  <input type="file" name="file" accept=".xlsx,.xlsb" required
-                         class="d-none" id="ot-file-input"
-                         onchange="onFileChange(this, 'ot-file-name', 'ot-file-label')">
-                </label>
+    {% else %}
+    <!-- ── Q360 ───────────────────────────────────────────────────────── -->
+    <div class="card shadow-sm border-0" style="border-radius:12px;overflow:hidden">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
+        <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
+
+        <form id="parse-form">
+
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
+            <label id="file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
+                   style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
+              <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                   style="width:36px;height:36px">
+                <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
               </div>
-
-              <div id="ot-error" class="alert alert-danger d-none mb-3"></div>
-
-              <!-- Submit -->
-              <button type="submit" id="ot-submit-btn" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
-                Parse File
-              </button>
-
-            </form>
+              <div class="flex-grow-1 overflow-hidden">
+                <div id="file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
+              </div>
+              <input type="file" name="file" accept=".xlsx,.xlsb" required
+                     class="d-none" id="file-input"
+                     onchange="onFileChange(this, 'file-name', 'file-label')">
+            </label>
           </div>
-        </div>
-      </div><!-- /overtime-panel -->
 
-    </div><!-- /tab-content -->
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
+            <input type="hidden" name="date_filter" id="date-filter-input" value="month">
+            <div class="d-flex gap-1 flex-nowrap">
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="all"        onclick="pickPreset('all')">All</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="week"       onclick="pickPreset('week')">This Week</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="last_month" onclick="pickPreset('last_month')">Last Month</button>
+              <button type="button" class="date-preset-btn btn btn-primary border-0 px-2" style="font-size:.75rem;white-space:nowrap" data-preset="month"  onclick="pickPreset('month')">This Month</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="year"       onclick="pickPreset('year')">This Year</button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
+            Parse File
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 
-<!-- Parse progress overlay (Q360) -->
+<!-- Q360 progress overlay -->
 <div id="parse-overlay" style="
-  display:none;
-  position:fixed;inset:0;
-  background:rgba(0,0,0,0.5);
-  z-index:10000;
-  align-items:center;
-  justify-content:center;
-  backdrop-filter:blur(2px)">
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);z-index:10000;
+  align-items:center;justify-content:center;backdrop-filter:blur(2px)">
   <div class="card shadow-lg border-0" style="width:380px;border-radius:16px;overflow:hidden">
     <div class="card-body p-4">
       <div class="d-flex align-items-center justify-content-between mb-3">
@@ -139,8 +111,7 @@
       </div>
       <div id="parse-substatus" class="text-secondary mb-2" style="font-size:.75rem;min-height:1em"></div>
       <div class="progress" style="height:6px;border-radius:99px;background:#e9ecef">
-        <div id="parse-progress-bar"
-             class="progress-bar progress-bar-striped progress-bar-animated"
+        <div id="parse-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
              style="width:0%;border-radius:99px;transition:width 0.6s ease"></div>
       </div>
     </div>
@@ -149,13 +120,9 @@
 
 <!-- Overtime processing overlay -->
 <div id="ot-overlay" style="
-  display:none;
-  position:fixed;inset:0;
-  background:rgba(0,0,0,0.5);
-  z-index:10000;
-  align-items:center;
-  justify-content:center;
-  backdrop-filter:blur(2px)">
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);z-index:10000;
+  align-items:center;justify-content:center;backdrop-filter:blur(2px)">
   <div class="card shadow-lg border-0" style="width:340px;border-radius:16px;overflow:hidden">
     <div class="card-body p-4 text-center">
       <div class="spinner-border text-primary mb-3" role="status"></div>
@@ -188,6 +155,8 @@ function pickPreset(mode) {
 
 // ── Q360 parse (streaming) ────────────────────────────────────────────────
 (function () {
+  const form = document.getElementById('parse-form');
+  if (!form) return;
   let timerInterval = null, startTime = 0;
 
   function setProgress(pct, msg, sub) {
@@ -197,14 +166,11 @@ function pickPreset(mode) {
     const subEl = document.getElementById('parse-substatus');
     if (subEl) subEl.textContent = sub || '';
   }
-
   function tickTimer() {
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const label = elapsed < 60 ? elapsed + 's'
-      : Math.floor(elapsed / 60) + 'm ' + String(elapsed % 60).padStart(2, '0') + 's';
+    const label = elapsed < 60 ? elapsed + 's' : Math.floor(elapsed/60)+'m '+String(elapsed%60).padStart(2,'0')+'s';
     document.getElementById('parse-timer').textContent = label;
   }
-
   function startProgress() {
     startTime = Date.now();
     document.getElementById('parse-overlay').style.display = 'flex';
@@ -212,87 +178,66 @@ function pickPreset(mode) {
     setProgress(5, 'Reading Excel file\u2026', '');
     timerInterval = setInterval(tickTimer, 500);
   }
-
   function stopProgress() {
-    clearInterval(timerInterval);
-    tickTimer();
+    clearInterval(timerInterval); tickTimer();
     setProgress(100, 'Done!', '');
     setTimeout(() => { document.getElementById('parse-overlay').style.display = 'none'; }, 400);
   }
-
   function injectHTML(html) {
     const container = document.getElementById('bulk-table');
     container.innerHTML = html;
     container.querySelectorAll('script').forEach(old => {
-      const s = document.createElement('script');
-      s.textContent = old.textContent;
+      const s = document.createElement('script'); s.textContent = old.textContent;
       old.parentNode.replaceChild(s, old);
     });
     if (window.htmx) htmx.process(container);
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  document.getElementById('parse-form').addEventListener('submit', async function(e) {
+  form.addEventListener('submit', async function(e) {
     e.preventDefault();
     document.getElementById('bulk-table').innerHTML = '';
     startProgress();
-
     let resp;
     try {
-      resp = await fetch('{{ url_for("bulk.parse") }}', {
-        method: 'POST',
-        body: new FormData(this),
-      });
+      resp = await fetch('{{ url_for("bulk.parse") }}', { method: 'POST', body: new FormData(this) });
     } catch (err) {
       stopProgress();
-      document.getElementById('bulk-table').innerHTML =
-        `<div class="alert alert-danger">Network error: ${err.message}</div>`;
+      document.getElementById('bulk-table').innerHTML = `<div class="alert alert-danger">Network error: ${err.message}</div>`;
       return;
     }
-
     if (!resp.ok) {
       stopProgress();
-      document.getElementById('bulk-table').innerHTML =
-        `<div class="alert alert-danger">Server error ${resp.status}</div>`;
+      document.getElementById('bulk-table').innerHTML = `<div class="alert alert-danger">Server error ${resp.status}</div>`;
       return;
     }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
+    const reader = resp.body.getReader(), decoder = new TextDecoder();
     let buf = '';
-
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        const parts = buf.split('\n\n');
-        buf = parts.pop();
+        const parts = buf.split('\n\n'); buf = parts.pop();
         for (const part of parts) {
           const line = part.trim();
           if (!line.startsWith('data: ')) continue;
-          let data;
-          try { data = JSON.parse(line.slice(6)); } catch { continue; }
-
+          let data; try { data = JSON.parse(line.slice(6)); } catch { continue; }
           if (data.type === 'progress') {
-            const fetchPct = data.total > 0
-              ? Math.round(10 + (data.done / data.total) * 80)
-              : 10;
+            const fetchPct = data.total > 0 ? Math.round(10 + (data.done/data.total)*80) : 10;
             const sub = data.total > 0 ? `${data.done} / ${data.total} users` : '';
             setProgress(fetchPct, data.user ? `Fetching \u2014 ${data.user}` : data.msg, sub);
           } else if (data.type === 'complete') {
             setProgress(95, 'Rendering table\u2026', '');
             setTimeout(() => { stopProgress(); injectHTML(data.html); }, 200);
           } else if (data.type === 'error') {
-            stopProgress();
-            injectHTML(data.html);
+            stopProgress(); injectHTML(data.html);
           }
         }
       }
     } catch (err) {
       stopProgress();
-      document.getElementById('bulk-table').innerHTML =
-        `<div class="alert alert-danger">Stream error: ${err.message}</div>`;
+      document.getElementById('bulk-table').innerHTML = `<div class="alert alert-danger">Stream error: ${err.message}</div>`;
     }
   });
 })();
@@ -300,39 +245,30 @@ function pickPreset(mode) {
 // ── Overtime parse (file download) ───────────────────────────────────────
 (function () {
   const form = document.getElementById('overtime-form');
+  if (!form) return;
   const overlay = document.getElementById('ot-overlay');
-  const errDiv = document.getElementById('ot-error');
-  const btn = document.getElementById('ot-submit-btn');
+  const errDiv  = document.getElementById('ot-error');
+  const btn     = document.getElementById('ot-submit-btn');
 
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
     errDiv.classList.add('d-none');
     overlay.style.display = 'flex';
     btn.disabled = true;
-
     let resp;
     try {
       resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
     } catch (err) {
-      overlay.style.display = 'none';
-      btn.disabled = false;
+      overlay.style.display = 'none'; btn.disabled = false;
       errDiv.textContent = 'Network error: ' + err.message;
-      errDiv.classList.remove('d-none');
-      return;
+      errDiv.classList.remove('d-none'); return;
     }
-
-    overlay.style.display = 'none';
-    btn.disabled = false;
-
+    overlay.style.display = 'none'; btn.disabled = false;
     if (!resp.ok) {
       let msg = 'Server error ' + resp.status;
       try { const j = await resp.json(); msg = j.error || msg; } catch {}
-      errDiv.textContent = msg;
-      errDiv.classList.remove('d-none');
-      return;
+      errDiv.textContent = msg; errDiv.classList.remove('d-none'); return;
     }
-
-    // Trigger download
     const blob = await resp.blob();
     const cd = resp.headers.get('Content-Disposition') || '';
     const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);

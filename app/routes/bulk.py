@@ -1147,7 +1147,12 @@ def overtime_parse():
             if pp_info:
                 pay_period_label, pay_week = pp_info
 
-        date_display = parsed_date.strftime('%-m/%-d/%Y') if parsed_date else raw_date
+        # Guard against pandas NaT (which is truthy-falsy ambiguous)
+        try:
+            date_display = parsed_date.strftime('%-m/%-d/%Y') if parsed_date else raw_date
+        except Exception:
+            date_display = raw_date
+            parsed_date = None
 
         name = str(_get(row, 'name')).strip()
         # Skip rows with no meaningful name (blank/NaN rows)

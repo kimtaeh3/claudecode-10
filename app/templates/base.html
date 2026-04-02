@@ -21,9 +21,15 @@
     </button>
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
-        <li class="nav-item">
-          <a class="nav-link {% if request.endpoint == 'bulk.index' %}active{% endif %}"
-             href="{{ url_for('bulk.index') }}">Bulk Upload</a>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if request.endpoint == 'bulk.index' %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown">Bulk Upload</a>
+          <ul class="dropdown-menu dropdown-menu-dark">
+            <li><a class="dropdown-item {% if request.endpoint == 'bulk.index' and request.args.get('tab','q360')=='q360' %}active{% endif %}"
+                   href="{{ url_for('bulk.index') }}?tab=q360">Q360</a></li>
+            <li><a class="dropdown-item {% if request.endpoint == 'bulk.index' and request.args.get('tab')=='overtime' %}active{% endif %}"
+                   href="{{ url_for('bulk.index') }}?tab=overtime">Overtime</a></li>
+          </ul>
         </li>
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'hours.view' %}active{% endif %}"
