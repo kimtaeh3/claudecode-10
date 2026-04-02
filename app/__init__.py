@@ -84,31 +84,22 @@ def create_app():
             "week2_start TEXT NOT NULL, "
             "week2_end   TEXT NOT NULL)"
         )
-        if _db.execute("SELECT COUNT(*) FROM pay_period").fetchone()[0] == 0:
-            from datetime import date as _date, timedelta as _td
-            # Anchor: 2025-1 Week 1 starts Monday, December 16, 2024 (offset 0).
-            # FY 2026-1 starts Monday, December 29, 2025 (offset 27).
-            # Each fiscal year has exactly 27 biweekly periods.
-            _anchor = _date(2024, 12, 16)
-            _PERIODS_PER_FY = 27
-            _ANCHOR_FY = 2025
-            for _i in range(-5 * _PERIODS_PER_FY, 10 * _PERIODS_PER_FY):
-                _w1s = _anchor + _td(days=14 * _i)
-                # Fiscal year and 1-indexed period number derived from offset
-                if _i >= 0:
-                    _fy = _ANCHOR_FY + (_i // _PERIODS_PER_FY)
-                    _period = (_i % _PERIODS_PER_FY) + 1
-                else:
-                    _neg = -_i  # positive count back from anchor
-                    _fy = _ANCHOR_FY - ((_neg - 1) // _PERIODS_PER_FY + 1)
-                    _period = _PERIODS_PER_FY - ((_neg - 1) % _PERIODS_PER_FY)
-                _w1e = _w1s + _td(days=6)
-                _w2s = _w1s + _td(days=7)
-                _w2e = _w1s + _td(days=13)
+        # Always sync from the authoritative xlsx if present (INSERT OR REPLACE so
+        # stale algorithmic rows get corrected on every restart).
+        import os as _os
+        _xlsx_path = _os.path.join(_os.path.dirname(__file__), '..', 'migrations', '2026 pay periods .xlsx')
+        if _os.path.exists(_xlsx_path):
+            import pandas as _pd
+            _ppdf = _pd.read_excel(_xlsx_path, dtype=str).dropna(subset=['Pay period'])
+            for _, _row in _ppdf.iterrows():
+                _pp  = str(_row['Pay period']).strip()
+                _w1s = str(_row['WEEK 1 START DATE']).split()[0]
+                _w1e = str(_row['WEEK 1 END DATE']).split()[0]
+                _w2s = str(_row['WEEK 2 START DATE']).split()[0]
+                _w2e = str(_row['WEEK 2 END DATE']).split()[0]
                 _db.execute(
-                    "INSERT OR IGNORE INTO pay_period VALUES (?,?,?,?,?)",
-                    (f"{_fy}-{_period}", _w1s.isoformat(), _w1e.isoformat(),
-                     _w2s.isoformat(), _w2e.isoformat())
+                    "INSERT OR REPLACE INTO pay_period VALUES (?,?,?,?,?)",
+                    (_pp, _w1s, _w1e, _w2s, _w2e)
                 )
         _db.commit()
 

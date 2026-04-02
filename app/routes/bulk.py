@@ -1059,17 +1059,30 @@ def overtime_parse():
         return ({'error': f'Could not read Excel file: {ex}'}, 400)
 
     # Normalise column names (strip whitespace, case-insensitive match)
-    df.columns = [c.strip() for c in df.columns]
+    df.columns = [str(c).strip() for c in df.columns]
     col_map = {c.lower(): c for c in df.columns}
 
     def _col(name):
         return col_map.get(name.lower())
 
-    required = ['id', 'start time', 'completion time', 'name', 'date', 'customer',
-                'on call support', 'hours']
-    missing = [r for r in required if _col(r) is None]
-    if missing:
-        return ({'error': f'Missing columns: {", ".join(missing)}'}, 400)
+    # Positional fallback: if name-based lookup fails, use fixed column indices
+    # matching the known export format (Image #6):
+    # 0=ID, 1=Start time, 2=Completion time, 3=Email, 4=Name, 5=Name2,
+    # 6=Date, 7=Customer, 8=ON CALL SUPPORT, 9=Hours
+    _POS = {
+        'id': 0, 'start time': 1, 'completion time': 2, 'email': 3,
+        'name': 4, 'name2': 5, 'date': 6, 'customer': 7,
+        'on call support': 8, 'hours': 9,
+    }
+
+    def _get(row, name):
+        col = _col(name)
+        if col is not None:
+            return row[col]
+        idx = _POS.get(name.lower())
+        if idx is not None and idx < len(row):
+            return row.iloc[idx]
+        return ''
 
     # Load pay period lookup: date -> (pay_period, pay_week)
     db = get_db()
@@ -1103,10 +1116,10 @@ def overtime_parse():
     by_person = defaultdict(list)
 
     for _, row in df.iterrows():
-        raw_date = str(row[_col('date')]).strip()
+        raw_date = str(_get(row, 'date')).strip()
         # Try to parse the date robustly
         parsed_date = None
-        for fmt in ('%m/%d/%Y', '%Y-%m-%d', '%m/%d/%y', '%d/%m/%Y'):
+        for fmt in ('%m/%d/%Y', '%Y-%m-%d', '%m/%d/%y', '%d/%m/%Y', '%m-%d-%Y'):
             try:
                 parsed_date = datetime.strptime(raw_date, fmt).date()
                 break
@@ -1127,16 +1140,19 @@ def overtime_parse():
 
         date_display = parsed_date.strftime('%-m/%-d/%Y') if parsed_date else raw_date
 
-        name = str(row[_col('name')]).strip()
+        name = str(_get(row, 'name')).strip()
+        # Skip rows with no meaningful name (blank/NaN rows)
+        if not name or name.lower() in ('nan', 'none', ''):
+            continue
         by_person[name].append({
-            'ID':               str(row[_col('id')]).strip(),
-            'Start time':       str(row[_col('start time')]).strip(),
-            'Completion time':  str(row[_col('completion time')]).strip(),
+            'ID':               str(_get(row, 'id')).strip(),
+            'Start time':       str(_get(row, 'start time')).strip(),
+            'Completion time':  str(_get(row, 'completion time')).strip(),
             'Name':             name,
             'Date':             date_display,
-            'Client':           str(row[_col('customer')]).strip(),
-            'Work':             str(row[_col('on call support')]).strip(),
-            '# of Extra Hours': str(row[_col('hours')]).strip(),
+            'Client':           str(_get(row, 'customer')).strip(),
+            'Work':             str(_get(row, 'on call support')).strip(),
+            '# of Extra Hours': str(_get(row, 'hours')).strip(),
             'Pay Period':       pay_period_label,
             'Pay Week':         str(pay_week),
         })
