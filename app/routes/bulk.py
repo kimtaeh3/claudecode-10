@@ -1136,6 +1136,13 @@ def overtime_parse():
         if date_filter == 'week':
             _f_start = now - timedelta(days=now.weekday())
             _f_end = _f_start + timedelta(days=6)
+        elif date_filter == '3months':
+            # Current month + 2 months prior = start of 2 months ago
+            _m = now.month - 2
+            _y = now.year + (_m - 1) // 12
+            _m = (_m - 1) % 12 + 1
+            _f_start = now.replace(year=_y, month=_m, day=1)
+            _f_end = now
         elif date_filter == 'month':
             _f_start = now.replace(day=1)
             _f_end = now
