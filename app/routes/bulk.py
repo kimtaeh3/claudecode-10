@@ -1054,9 +1054,18 @@ def overtime_parse():
         return ({'error': 'No file uploaded'}, 400)
 
     try:
-        df = pd.read_excel(file, dtype=str)
+        # Read ALL sheets and concatenate — input file may have one sheet per person
+        raw = pd.read_excel(file, dtype=str, sheet_name=None)
+        frames = []
+        for _sheet_df in raw.values():
+            _sheet_df.columns = [str(c).strip() for c in _sheet_df.columns]
+            frames.append(_sheet_df)
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
     except Exception as ex:
         return ({'error': f'Could not read Excel file: {ex}'}, 400)
+
+    if df.empty:
+        return ({'error': 'No data found in file'}, 400)
 
     # Normalise column names (strip whitespace, case-insensitive match)
     df.columns = [str(c).strip() for c in df.columns]
