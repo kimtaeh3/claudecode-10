@@ -33,6 +33,18 @@
             </label>
           </div>
 
+          <div class="mb-4">
+            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
+            <input type="hidden" name="date_filter" id="ot-date-filter-input" value="month">
+            <div class="d-flex gap-1 flex-nowrap">
+              <button type="button" class="ot-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="all"        onclick="pickOtPreset('all')">All</button>
+              <button type="button" class="ot-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="week"       onclick="pickOtPreset('week')">This Week</button>
+              <button type="button" class="ot-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="last_month" onclick="pickOtPreset('last_month')">Last Month</button>
+              <button type="button" class="ot-preset-btn btn btn-primary border-0 px-2" style="font-size:.75rem;white-space:nowrap" data-preset="month"  onclick="pickOtPreset('month')">This Month</button>
+              <button type="button" class="ot-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="year"       onclick="pickOtPreset('year')">This Year</button>
+            </div>
+          </div>
+
           <div id="ot-error" class="alert alert-danger d-none mb-3"></div>
 
           <button type="submit" id="ot-submit-btn" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
@@ -139,6 +151,18 @@ function onFileChange(input, nameId, labelId) {
   const name = input.files[0]?.name || 'Choose .xlsx or .xlsb file…';
   document.getElementById(nameId).textContent = name;
   document.getElementById(labelId).style.borderColor = input.files[0] ? '#0d6efd' : '';
+}
+
+function pickOtPreset(mode) {
+  document.getElementById('ot-date-filter-input').value = mode;
+  document.querySelectorAll('.ot-preset-btn').forEach(b => {
+    const active = b.dataset.preset === mode;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('border-0', active);
+    b.classList.toggle('active', active);
+    b.classList.toggle('btn-light', !active);
+    b.classList.toggle('border', !active);
+  });
 }
 
 function pickPreset(mode) {

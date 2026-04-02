@@ -1129,6 +1129,49 @@ def overtime_parse():
             return row.iloc[idx]
         return ''
 
+    # Date range filter using Start time column
+    date_filter = request.form.get('date_filter', 'all')
+    if date_filter != 'all':
+        now = datetime.now()
+        if date_filter == 'week':
+            _f_start = now - timedelta(days=now.weekday())
+            _f_end = _f_start + timedelta(days=6)
+        elif date_filter == 'month':
+            _f_start = now.replace(day=1)
+            _f_end = now
+        elif date_filter == 'last_month':
+            _first = now.replace(day=1)
+            _f_end = _first - timedelta(days=1)
+            _f_start = _f_end.replace(day=1)
+        elif date_filter == 'year':
+            _f_start = now.replace(month=1, day=1)
+            _f_end = now
+        else:
+            _f_start = _f_end = None
+
+        if _f_start:
+            def _parse_start(val):
+                s = str(val).strip()
+                for fmt in ('%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S',
+                            '%m/%d/%y %H:%M:%S', '%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y'):
+                    try:
+                        return datetime.strptime(s, fmt)
+                    except ValueError:
+                        pass
+                try:
+                    return pd.to_datetime(s).to_pydatetime()
+                except Exception:
+                    return None
+
+            st_col = _col_or_detected('start time') or (df.columns[1] if len(df.columns) > 1 else None)
+            if st_col and st_col in df.columns:
+                def _in_range(row):
+                    d = _parse_start(row[st_col])
+                    if d is None:
+                        return False
+                    return _f_start.date() <= d.date() <= _f_end.date()
+                df = df[df.apply(_in_range, axis=1)]
+
     # Load pay period lookup: date -> (pay_period, pay_week)
     db = get_db()
     pp_rows = db.execute(
