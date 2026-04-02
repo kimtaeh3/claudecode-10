@@ -162,7 +162,8 @@ class Q360Service:
                      logtime: str, note: str, company: str,
                      target_user_id: str = None, category: str = None,
                      task_data: dict = None) -> dict:
-        uid = target_user_id or self.user_id
+        # Q360 TIMEBILL.USERID column is VARCHAR(15) — truncate to match DB schema
+        uid = (target_user_id or self.user_id)[:15]
         cookies = {'cookies_are': 'working'}
         headers = {
             'Connection': 'keep-alive',
@@ -231,7 +232,10 @@ class Q360Service:
         )
         r6 = self.session.post(AJAX_URL, headers=headers, data=create_payload,
                                cookies=cookies, verify=False)
-        timebill_no = json.loads(r6.text)['outvars']['timebillno']
+        r6_data = json.loads(r6.text)
+        if not r6_data or not r6_data.get('outvars'):
+            raise RuntimeError(f"Q360 rejected timebill creation: {r6.text[:300]}")
+        timebill_no = r6_data['outvars']['timebillno']
 
         # Load timebill page
         load_payload = (
@@ -298,16 +302,36 @@ class Q360Service:
                                data=urlencode(save_data, quote_via=quote_plus),
                                cookies=cookies, verify=False, timeout=25)
         print(f"  response: {r7.text[:500]}", file=sys.stderr, flush=True)
-        # Surface Q360-level errors (response body may contain error details)
+
+        # Verify the timebill was actually saved by fetching it back from Q360.
+        # We do NOT rely on the timebill_save response body for success/failure —
+        # Q360 can return warning messages (e.g. "previous months not permitted")
+        # in the response even when it saves successfully, which would cause false
+        # failures if checked. Instead, confirm the record exists via pageload.
+        verify_payload = (
+            f'_a=pageload&_pversion=d101'
+            f'&_referrer=action%3Dtimebill%26timebillno%3D{timebill_no}'
+            f'&_type=data&action=timebill&timebillno={timebill_no}'
+        )
+        rv = self.session.post(AJAX_URL,
+                               headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                               data=verify_payload, cookies=cookies, verify=False, timeout=15)
         try:
-            resp_data = json.loads(r7.text)
-            if isinstance(resp_data, dict):
-                err = resp_data.get('error') or resp_data.get('message') or resp_data.get('msg')
-                status = resp_data.get('status', '')
-                if err or (status and str(status).lower() not in ('ok', 'success', '1', 'true', '')):
-                    raise RuntimeError(f"Q360 rejected timebill: {err or resp_data}")
-        except (json.JSONDecodeError, AttributeError):
-            pass  # non-JSON response is not necessarily an error
+            vdata = json.loads(rv.text)
+            # Q360 returns the timebill record under data.data.recordSet.timebill
+            tb_record = (vdata.get('data', {}) or {}).get('data', {}) or {}
+            rs = (tb_record.get('recordSet', {}) or {}).get('timebill', {}) or {}
+            rows = rs.get('data') or []
+            if not rows:
+                raise RuntimeError(f"Q360 timebill {timebill_no} not found after save — save may have failed")
+            print(f"  [verify] timebill {timebill_no} confirmed saved in Q360", file=sys.stderr, flush=True)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            # If we can't parse the verify response, log and continue — the save
+            # most likely succeeded (old code never verified at all).
+            print(f"  [verify] could not confirm timebill {timebill_no}: {e}", file=sys.stderr, flush=True)
+
         return {'status': 'ok', 'timebillno': timebill_no}
 
     # ------------------------------------------------------------------ #

@@ -235,6 +235,10 @@ def _filter_by_date(grouped, mode):
     elif mode == 'month':
         range_start = today.replace(day=1)
         range_end   = today.replace(day=_cal.monthrange(today.year, today.month)[1])
+    elif mode == 'last_month':
+        first_of_this = today.replace(day=1)
+        range_end   = first_of_this - timedelta(days=1)
+        range_start = range_end.replace(day=1)
     elif mode == 'year':
         range_start = today.replace(month=1, day=1)
         range_end   = today.replace(month=12, day=31)
@@ -276,7 +280,7 @@ def _parse_excel(file):
             if employee and employee != 'nan':
                 parts = employee.strip().split()
                 if len(parts) >= 2:
-                    username = (parts[0][0] + parts[-1]).lower()
+                    username = (parts[0][0] + parts[-1]).upper()
                 else:
                     continue
             else:
@@ -431,23 +435,49 @@ def parse():
             n = name_map.get(un, '')
             return f'{n} ({un})' if n else un
 
-        yield _evt({'type': 'progress', 'done': 0, 'total': total,
-                    'user': '', 'msg': 'Connecting to Q360\u2026'})
+        # Load cached project lists (fresh = fetched within last 24 hours)
+        cache_rows = db.execute(
+            "SELECT username, projects_json FROM project_cache "
+            "WHERE fetched_at >= datetime('now', '-24 hours', 'localtime')"
+        ).fetchall()
+        cached = {r['username']: json.loads(r['projects_json']) for r in cache_rows}
 
-        def _fetch(username):
-            try:
-                return username, svc.get_projects(username)
-            except Exception:
-                return username, {}
+        to_fetch = [un for un in usernames if un not in cached]
+        # Users served from cache count as already done
+        for un in usernames:
+            if un in cached:
+                live_by_user[un] = cached[un]
 
-        with ThreadPoolExecutor(max_workers=min(total, 10)) as pool:
-            futures = {pool.submit(_fetch, un): un for un in usernames}
-            for f in as_completed(futures):
-                un, projects = f.result()
-                live_by_user[un] = projects
-                yield _evt({'type': 'progress', 'done': len(live_by_user),
-                            'total': total, 'user': _display_user(un),
-                            'msg': f'Fetched projects for {un}'})
+        if to_fetch:
+            yield _evt({'type': 'progress', 'done': len([un for un in usernames if un in cached]),
+                        'total': total, 'user': '', 'msg': 'Connecting to Q360\u2026'})
+
+            def _fetch(username):
+                try:
+                    return username, svc.get_projects(username)
+                except Exception:
+                    return username, {}
+
+            with ThreadPoolExecutor(max_workers=min(len(to_fetch), 10)) as pool:
+                futures = {pool.submit(_fetch, un): un for un in to_fetch}
+                for f in as_completed(futures):
+                    un, projects = f.result()
+                    live_by_user[un] = projects
+                    # Persist to cache
+                    db.execute(
+                        "INSERT INTO project_cache (username, projects_json, fetched_at) "
+                        "VALUES (?, ?, datetime('now','localtime')) "
+                        "ON CONFLICT(username) DO UPDATE SET "
+                        "projects_json=excluded.projects_json, fetched_at=excluded.fetched_at",
+                        (un, json.dumps(projects))
+                    )
+                    db.commit()
+                    yield _evt({'type': 'progress', 'done': len(live_by_user),
+                                'total': total, 'user': _display_user(un),
+                                'msg': f'Fetched projects for {un}'})
+        else:
+            yield _evt({'type': 'progress', 'done': total, 'total': total,
+                        'user': '', 'msg': 'Loaded from cache'})
 
         # Upsert team members: add any new usernames from the upload
         try:
@@ -486,7 +516,7 @@ def parse():
             pass
 
         try:
-            html = _do_parse(grouped, live_by_user)
+            html = _do_parse(grouped, live_by_user, date_filter)
             yield _evt({'type': 'complete', 'html': html})
         except Exception:
             err = _tb.format_exc()
@@ -501,7 +531,7 @@ def parse():
     )
 
 
-def _do_parse(grouped, live_by_user):
+def _do_parse(grouped, live_by_user, date_filter='month'):
     # Determine which day columns have any data
     active_days = [d for d in DAY_COLS if any(
         r['days'][d]['hours'] > 0 for u in grouped for r in u['rows']
@@ -758,7 +788,8 @@ def _do_parse(grouped, live_by_user):
                            default_category=DEFAULT_CATEGORY, active_days=active_days,
                            user_projects=user_projects,
                            all_weeks=all_weeks, week_mondays=week_mondays,
-                           current_week_num=current_week_num)
+                           current_week_num=current_week_num,
+                           date_filter=date_filter)
 
 
 @bp.route('/review', methods=['POST'])
@@ -790,7 +821,8 @@ def review():
         for d in dates:
             existing[f"{username}|{d}"] = 0.0
         try:
-            result = svc.get_hours(username, min(dates), max(dates))
+            uid15 = username[:15]  # Q360 TIMEBILL.USERID is VARCHAR(15)
+            result = svc.get_hours(uid15, min(dates), max(dates))
             for tb in result.get('userReport', []):
                 date = tb['startDate'][:10]
                 key = f"{username}|{date}"
@@ -889,7 +921,8 @@ def _submit_stream(entries):
     existing = {}
     for username, dates in user_dates.items():
         try:
-            result = svc.get_hours(username, min(dates), max(dates))
+            uid15 = username[:15]  # Q360 TIMEBILL.USERID is VARCHAR(15)
+            result = svc.get_hours(uid15, min(dates), max(dates))
             for tb in result.get('userReport', []):
                 key = f"{username}|{tb['startDate'][:10]}"
                 existing[key] = existing.get(key, 0.0) + float(tb.get('hours', 0))
@@ -907,7 +940,7 @@ def _submit_stream(entries):
             hours = float(d.get('hours', 0))
             key = f"{e['username']}|{d['date']}"
             existing_h = existing.get(key, 0.0)
-            if hours > 0 and existing_h + hours <= 8.0:
+            if hours > 0 and existing_h + hours <= 24.0:
                 day_stacks[(e['username'], d['date'])].append((int(e['row_num']), e, d))
 
     for (username, date), stack in day_stacks.items():
@@ -934,10 +967,10 @@ def _submit_stream(entries):
                 continue
             key = f"{e['username']}|{d['date']}"
             existing_h = existing.get(key, 0.0)
-            if existing_h + hours > 8.0:
+            if existing_h + hours > 24.0:
                 results.append({'employee': e.get('username', ''), 'day': d.get('day', ''),
                                 'hours': hours, 'success': None,
-                                'error': f'Skipped \u2014 {existing_h}h already logged, adding {hours}h would exceed 8h'})
+                                'error': f'Skipped \u2014 {existing_h}h already logged, adding {hours}h would exceed 24h'})
                 done += 1
                 yield _evt({'type': 'progress', 'phase': 'submit', 'done': done, 'total': total,
                             'msg': f'Skipped \u2014 {e.get("username", "")} {d.get("day", "")} {d.get("date", "")}',
@@ -1011,7 +1044,7 @@ def _submit_stream(entries):
 @login_required
 def save_username():
     employee_name = request.form.get('employee_name', '').strip()
-    q360_username = request.form.get('q360_username', '').strip()
+    q360_username = request.form.get('q360_username', '').strip().upper()
     if not employee_name or not q360_username:
         return ('Missing fields', 400)
     db = get_db()

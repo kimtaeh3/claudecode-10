@@ -54,9 +54,10 @@
       </select>
       <div class="btn-group btn-group-sm ms-1" role="group">
         <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="all"       onclick="setWeekPreset('all')">All</button>
-        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="week"      onclick="setWeekPreset('week')">This Week</button>
-        <button type="button" class="btn btn-outline-secondary week-preset-btn active" data-preset="month" onclick="setWeekPreset('month')">This Month</button>
-        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="year"      onclick="setWeekPreset('year')">This Year</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="week"       onclick="setWeekPreset('week')">This Week</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="last_month" onclick="setWeekPreset('last_month')">Last Month</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn {% if date_filter == 'month' or not date_filter %}active{% endif %}" data-preset="month" onclick="setWeekPreset('month')">This Month</button>
+        <button type="button" class="btn btn-outline-secondary week-preset-btn" data-preset="year"       onclick="setWeekPreset('year')">This Year</button>
       </div>
     </div>
   </div>
@@ -95,6 +96,17 @@
       min = matching.length ? Math.min(...matching) : Math.min(...allWeeks);
       max = matching.length ? Math.max(...matching) : Math.max(...allWeeks);
 
+    } else if (mode === 'last_month') {
+      const lastMonthEnd = new Date(yr, mo, 0); // last day of previous month
+      const lastMonthStart = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+      const matching = allWeeks.filter(w => {
+        const mon = new Date(WEEK_MONDAYS[w] + 'T00:00:00');
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        return mon <= lastMonthEnd && sun >= lastMonthStart;
+      });
+      min = matching.length ? Math.min(...matching) : Math.min(...allWeeks);
+      max = matching.length ? Math.max(...matching) : Math.max(...allWeeks);
+
     } else if (mode === 'year') {
       // Overlap: week_monday <= Dec 31 AND week_sunday >= Jan 1
       const rangeStart = new Date(yr, 0, 1);
@@ -120,8 +132,8 @@
     if (window.filterByWeek) window.filterByWeek();
   }
 
-  // Apply default "This Month" on load — defer so the IIFE below runs first
-  setTimeout(() => setWeekPreset('month'), 0);
+  // Apply the same preset that was selected in the upload form
+  setTimeout(() => setWeekPreset('{{ date_filter | default("month") }}'), 0);
   </script>
 </div>
 
@@ -249,6 +261,7 @@
                 {% if sel %}{% set ns2.matched = true %}{% endif %}
                 <option value="{{ loop.index0 }}"
                         data-q360="{{ proj.q360id }}" data-cat="{{ proj.category }}"
+                        data-desc="{{ proj.customer }}"
                         {% if sel %}selected{% endif %}>{{ lbl }}</option>
               {% endif %}
             {% endfor %}
@@ -879,12 +892,14 @@ function applyProjectChoice(sel) {
       if (days.length === 0) return;
       const projSel = tr.querySelector('.project-field');
       const projLabel = projSel ? (projSel.options[projSel.selectedIndex]?.text || '').trim() : '';
+      const projDesc = projSel ? (projSel.options[projSel.selectedIndex]?.dataset.desc || '') : '';
       rows.push({
         row_num: tr.dataset.rownum,
         username: tr.dataset.username,
         employee: tr.closest('tbody').querySelector('td:nth-child(2)')?.textContent?.trim() || '',
         q360id, category,
         project: projLabel,
+        customer: projDesc,
         needs_attention: !q360id,
         company: 'CONNEX TELECOMMUNICATIONS INC.',
         comment: '',
@@ -1078,7 +1093,11 @@ async function loadUserProjects(username) {
       const o = document.createElement('option');
       o.value = opt.value;
       o.dataset.q360 = opt.value;
-      o.textContent = opt.textContent.trim();
+      // Extract description from "description — taskId" label
+      const fullText = opt.textContent.trim();
+      const dashIdx = fullText.lastIndexOf(' — ');
+      o.dataset.desc = dashIdx >= 0 ? fullText.slice(0, dashIdx) : fullText;
+      o.textContent = fullText;
       if (opt.value === currentQ360) o.selected = true;
       sel.appendChild(o);
     });
@@ -1094,9 +1113,9 @@ async function loadUserProjects(username) {
         const dashIdx = lbl.lastIndexOf(' — ');
         return dashIdx >= 0 && lbl.slice(dashIdx + 3) === currentQ360;
       });
-      preserved.textContent = matchedLabel
-        ? matchedLabel.textContent.trim()
-        : currentQ360;
+      const preservedText = matchedLabel ? matchedLabel.textContent.trim() : currentQ360;
+      preserved.textContent = preservedText;
+      if (matchedLabel) preserved.dataset.desc = matchedLabel.dataset.desc || '';
       preserved.selected = true;
       sel.appendChild(preserved);
     }
