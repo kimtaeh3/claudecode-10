@@ -1095,13 +1095,20 @@ def overtime_parse():
                 continue
             except Exception:
                 pass
-        # Numeric header → Hours
-        if 'hours' not in _detected:
-            try:
-                float(c)
+        # Numeric header → Hours candidate (prefer the one after ON CALL SUPPORT)
+        try:
+            float(c)
+            if 'hours' not in _detected:
                 _detected['hours'] = c
-            except ValueError:
-                pass
+        except ValueError:
+            pass
+
+    # Override: column immediately to the right of ON CALL SUPPORT is the hours column
+    on_call_col = _col('on call support')
+    if on_call_col in cols:
+        on_call_idx = cols.index(on_call_col)
+        if on_call_idx + 1 < len(cols):
+            _detected['hours'] = cols[on_call_idx + 1]
 
     def _col_or_detected(name):
         """Return actual column label for a logical field name."""
