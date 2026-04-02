@@ -59,7 +59,7 @@ def users():
 @bp.route('/users/add', methods=['POST'])
 @login_required
 def add_user():
-    username = request.form['username'].strip()
+    username = request.form['username'].strip().upper()
     name = request.form.get('name', '').strip()
     team = request.form['team'].strip()
     email = request.form.get('email', '').strip()
@@ -78,7 +78,7 @@ def add_user():
         (username, name)
     ).fetchone()
     if existing:
-        if existing['username'].lower() == username.lower():
+        if existing['username'].upper() == username:
             return ('Username already exists', 409)
         return (f'Name already exists (as {existing["username"]})', 409)
     db.execute('INSERT INTO team_member (username, name, team, email, member_type) VALUES (?, ?, ?, ?, ?)',
@@ -95,7 +95,7 @@ def add_user():
 @bp.route('/users/edit/<int:member_id>', methods=['POST'])
 @login_required
 def edit_user(member_id):
-    username = request.form.get('username', '').strip()
+    username = request.form.get('username', '').strip().upper()
     name = request.form.get('name', '').strip()
     team = request.form.get('team', '').strip()
     email = request.form.get('email', '').strip()

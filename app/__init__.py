@@ -65,6 +65,12 @@ def create_app():
             "updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), "
             "PRIMARY KEY (username, description))"
         )
+        _db.execute(
+            "CREATE TABLE IF NOT EXISTS project_cache ("
+            "username TEXT PRIMARY KEY, "
+            "projects_json TEXT NOT NULL, "
+            "fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')))"
+        )
         # Default non-billable project pattern
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"

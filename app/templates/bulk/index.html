@@ -34,11 +34,12 @@
           <div class="mb-4">
             <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
             <input type="hidden" name="date_filter" id="date-filter-input" value="month">
-            <div class="d-flex gap-2 flex-wrap">
-              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="all"   onclick="pickPreset('all')">All</button>
-              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="week"  onclick="pickPreset('week')">This Week</button>
-              <button type="button" class="date-preset-btn btn btn-sm btn-primary border-0 px-3 active" data-preset="month" onclick="pickPreset('month')">This Month</button>
-              <button type="button" class="date-preset-btn btn btn-sm btn-light border px-3" data-preset="year"  onclick="pickPreset('year')">This Year</button>
+            <div class="d-flex gap-1" style="white-space:nowrap">
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="all"        onclick="pickPreset('all')">All</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="week"       onclick="pickPreset('week')">This Week</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="last_month" onclick="pickPreset('last_month')">Last Month</button>
+              <button type="button" class="date-preset-btn btn btn-primary border-0 px-2 active" style="font-size:.75rem" data-preset="month" onclick="pickPreset('month')">This Month</button>
+              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="year"       onclick="pickPreset('year')">This Year</button>
             </div>
           </div>
 

@@ -82,9 +82,9 @@ def table():
                    'submitted_at TEXT NOT NULL DEFAULT (datetime(\'now\',\'localtime\')), '
                    'timebillno TEXT)')
         for uid, data in results.items():
-            uid_lower = uid.lower()
+            uid_upper = uid.upper()
             db.execute('DELETE FROM bulk_hours WHERE username = ? AND date BETWEEN ? AND ?',
-                       (uid_lower, start, end))
+                       (uid_upper, start, end))
             for entry in data.get('userReport', []):
                 date_val = (entry.get('startDate') or '')[:10]
                 if not date_val:
@@ -92,7 +92,7 @@ def table():
                 db.execute(
                     'INSERT INTO bulk_hours (username, employee, q360id, project, category, company, date, hours) '
                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    (uid_lower, uid_lower, '', entry.get('project', ''), entry.get('category', ''),
+                    (uid_upper, uid_upper, '', entry.get('project', ''), entry.get('category', ''),
                      entry.get('company', ''), date_val, float(entry.get('hours', 0)))
                 )
         # Auto-add/normalize usernames to team_member (lowercase username, title-case name)
@@ -102,26 +102,26 @@ def table():
                 continue
             if not data.get('userReport'):
                 continue
-            uid_lower = uid.lower()
-            uid_name = ' '.join(p.capitalize() for p in uid_lower.replace('.', ' ').replace('_', ' ').split())
-            # Find all team_member rows whose username lowercases to uid_lower
+            uid_upper = uid.upper()
+            uid_name = ' '.join(p.capitalize() for p in uid_upper.lower().replace('.', ' ').replace('_', ' ').split())
+            # Find all team_member rows whose username uppercases to uid_upper
             dupes = db.execute(
-                'SELECT id, username, name FROM team_member WHERE LOWER(username) = ?', (uid_lower,)
+                'SELECT id, username, name FROM team_member WHERE UPPER(username) = ?', (uid_upper,)
             ).fetchall()
             if not dupes:
                 db.execute(
                     "INSERT INTO team_member (username, name, team) VALUES (?, ?, 'All')",
-                    (uid_lower, uid_name)
+                    (uid_upper, uid_name)
                 )
             elif len(dupes) == 1:
                 row = dupes[0]
-                # Normalize username to lowercase; only overwrite name if it was auto-set (equals old username)
-                new_name = uid_name if row['name'] == row['username'] else row['name']
+                # Normalize username to uppercase; only overwrite name if it was auto-set (equals old username)
+                new_name = uid_name if row['name'].upper() == row['username'].upper() else row['name']
                 db.execute('UPDATE team_member SET username = ?, name = ? WHERE id = ?',
-                           (uid_lower, new_name, row['id']))
-                if row['username'] != uid_lower:
+                           (uid_upper, new_name, row['id']))
+                if row['username'] != uid_upper:
                     db.execute('UPDATE bulk_hours SET username = ? WHERE username = ?',
-                               (uid_lower, row['username']))
+                               (uid_upper, row['username']))
             else:
                 # Multiple dupes — pick the one with most recent bulk_hours date, delete the rest
                 best_id = None
@@ -137,12 +137,12 @@ def table():
                 for row in dupes:
                     if row['id'] != best_id:
                         db.execute('UPDATE bulk_hours SET username = ? WHERE username = ?',
-                                   (uid_lower, row['username']))
+                                   (uid_upper, row['username']))
                         db.execute('DELETE FROM team_member WHERE id = ?', (row['id'],))
                 best_row = next(r for r in dupes if r['id'] == best_id)
-                new_name = uid_name if best_row['name'] == best_row['username'] else best_row['name']
+                new_name = uid_name if best_row['name'].upper() == best_row['username'].upper() else best_row['name']
                 db.execute('UPDATE team_member SET username = ?, name = ? WHERE id = ?',
-                           (uid_lower, new_name, best_id))
+                           (uid_upper, new_name, best_id))
         db.commit()
     except Exception:
         pass  # DB failure must not break the hours view

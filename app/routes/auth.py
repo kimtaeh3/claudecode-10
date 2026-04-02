@@ -21,7 +21,7 @@ def login():
         return redirect(url_for('bulk.index'))
     error = None
     if request.method == 'POST':
-        user_id = request.form['user_id'].strip()
+        user_id = request.form['user_id'].strip().upper()
         password = request.form['password']
         try:
             svc = Q360Service(user_id, password)
