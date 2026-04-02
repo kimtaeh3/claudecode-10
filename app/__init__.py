@@ -75,6 +75,41 @@ def create_app():
         _db.execute(
             "INSERT OR IGNORE INTO nonbillable_project (name) VALUES ('INTERNAL CONNEX')"
         )
+        # Pay period table + seed
+        _db.execute(
+            "CREATE TABLE IF NOT EXISTS pay_period ("
+            "pay_period  TEXT PRIMARY KEY, "
+            "week1_start TEXT NOT NULL, "
+            "week1_end   TEXT NOT NULL, "
+            "week2_start TEXT NOT NULL, "
+            "week2_end   TEXT NOT NULL)"
+        )
+        if _db.execute("SELECT COUNT(*) FROM pay_period").fetchone()[0] == 0:
+            from datetime import date as _date, timedelta as _td
+            # Anchor: 2025-1 Week 1 starts Monday, December 16, 2024 (offset 0).
+            # FY 2026-1 starts Monday, December 29, 2025 (offset 27).
+            # Each fiscal year has exactly 27 biweekly periods.
+            _anchor = _date(2024, 12, 16)
+            _PERIODS_PER_FY = 27
+            _ANCHOR_FY = 2025
+            for _i in range(-5 * _PERIODS_PER_FY, 10 * _PERIODS_PER_FY):
+                _w1s = _anchor + _td(days=14 * _i)
+                # Fiscal year and 1-indexed period number derived from offset
+                if _i >= 0:
+                    _fy = _ANCHOR_FY + (_i // _PERIODS_PER_FY)
+                    _period = (_i % _PERIODS_PER_FY) + 1
+                else:
+                    _neg = -_i  # positive count back from anchor
+                    _fy = _ANCHOR_FY - ((_neg - 1) // _PERIODS_PER_FY + 1)
+                    _period = _PERIODS_PER_FY - ((_neg - 1) % _PERIODS_PER_FY)
+                _w1e = _w1s + _td(days=6)
+                _w2s = _w1s + _td(days=7)
+                _w2e = _w1s + _td(days=13)
+                _db.execute(
+                    "INSERT OR IGNORE INTO pay_period VALUES (?,?,?,?,?)",
+                    (f"{_fy}-{_period}", _w1s.isoformat(), _w1e.isoformat(),
+                     _w2s.isoformat(), _w2e.isoformat())
+                )
         _db.commit()
 
     from app.routes import auth, hours, forecast, admin, bulk

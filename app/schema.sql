@@ -103,6 +103,15 @@ CREATE TABLE IF NOT EXISTS bulk_hours (
     timebillno   TEXT
 );
 
+-- Pay periods: each period has 2 weeks (Mon–Sun each), label format YYYY-N
+CREATE TABLE IF NOT EXISTS pay_period (
+    pay_period  TEXT PRIMARY KEY,  -- e.g. '2025-23'
+    week1_start TEXT NOT NULL,     -- YYYY-MM-DD (Monday)
+    week1_end   TEXT NOT NULL,     -- YYYY-MM-DD (Sunday)
+    week2_start TEXT NOT NULL,     -- YYYY-MM-DD (Monday)
+    week2_end   TEXT NOT NULL      -- YYYY-MM-DD (Sunday)
+);
+
 -- Forecast weeks
 CREATE TABLE IF NOT EXISTS forecast_week (
     forecast_week_id INTEGER PRIMARY KEY AUTOINCREMENT,

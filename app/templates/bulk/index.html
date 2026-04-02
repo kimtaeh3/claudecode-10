@@ -5,57 +5,117 @@
 <div class="row justify-content-center mt-3">
   <div class="col-lg-5 col-md-7">
 
-    <div class="card shadow-sm border-0" style="border-radius:12px;overflow:hidden">
-      <div class="card-body p-4">
-        <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
-        <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
+    <!-- Tab nav -->
+    <ul class="nav nav-tabs mb-0" id="bulkTabs" role="tablist"
+        style="border-bottom:none">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-semibold" id="q360-tab"
+                data-bs-toggle="tab" data-bs-target="#q360-panel"
+                type="button" role="tab">Q360</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="overtime-tab"
+                data-bs-toggle="tab" data-bs-target="#overtime-panel"
+                type="button" role="tab">Overtime</button>
+      </li>
+    </ul>
 
-        <form id="parse-form">
+    <div class="tab-content">
 
-          <!-- File picker -->
-          <div class="mb-4">
-            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
-            <label id="file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
-                   style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
-              <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
-                   style="width:36px;height:36px">
-                <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
+      <!-- ── Q360 tab ─────────────────────────────────────────────────── -->
+      <div class="tab-pane fade show active" id="q360-panel" role="tabpanel">
+        <div class="card shadow-sm border-0" style="border-radius:0 12px 12px 12px;overflow:hidden">
+          <div class="card-body p-4">
+            <h5 class="fw-bold mb-1">Bulk Upload Hours</h5>
+            <p class="text-muted small mb-4">Upload an Excel file to review and submit hours for your team.</p>
+
+            <form id="parse-form">
+
+              <!-- File picker -->
+              <div class="mb-4">
+                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
+                <label id="file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
+                       style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
+                  <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                       style="width:36px;height:36px">
+                    <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
+                  </div>
+                  <div class="flex-grow-1 overflow-hidden">
+                    <div id="file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
+                  </div>
+                  <input type="file" name="file" accept=".xlsx,.xlsb" required
+                         class="d-none" id="file-input"
+                         onchange="onFileChange(this, 'file-name', 'file-label')">
+                </label>
               </div>
-              <div class="flex-grow-1 overflow-hidden">
-                <div id="file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
+
+              <!-- Date range -->
+              <div class="mb-4">
+                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
+                <input type="hidden" name="date_filter" id="date-filter-input" value="month">
+                <div class="d-flex gap-1 flex-nowrap">
+                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="all"        onclick="pickPreset('all')">All</button>
+                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="week"       onclick="pickPreset('week')">This Week</button>
+                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="last_month" onclick="pickPreset('last_month')">Last Month</button>
+                  <button type="button" class="date-preset-btn btn btn-primary border-0 px-2" style="font-size:.75rem;white-space:nowrap" data-preset="month" onclick="pickPreset('month')">This Month</button>
+                  <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem;white-space:nowrap" data-preset="year"       onclick="pickPreset('year')">This Year</button>
+                </div>
               </div>
-              <input type="file" name="file" accept=".xlsx,.xlsb" required
-                     class="d-none" id="file-input"
-                     onchange="onFileChange(this)">
-            </label>
+
+              <!-- Submit -->
+              <button type="submit" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
+                Parse File
+              </button>
+
+            </form>
           </div>
+        </div>
+      </div><!-- /q360-panel -->
 
-          <!-- Date range -->
-          <div class="mb-4">
-            <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Date Range</label>
-            <input type="hidden" name="date_filter" id="date-filter-input" value="month">
-            <div class="d-flex gap-1" style="white-space:nowrap">
-              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="all"        onclick="pickPreset('all')">All</button>
-              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="week"       onclick="pickPreset('week')">This Week</button>
-              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="last_month" onclick="pickPreset('last_month')">Last Month</button>
-              <button type="button" class="date-preset-btn btn btn-primary border-0 px-2 active" style="font-size:.75rem" data-preset="month" onclick="pickPreset('month')">This Month</button>
-              <button type="button" class="date-preset-btn btn btn-light border px-2" style="font-size:.75rem" data-preset="year"       onclick="pickPreset('year')">This Year</button>
-            </div>
+      <!-- ── Overtime tab ──────────────────────────────────────────────── -->
+      <div class="tab-pane fade" id="overtime-panel" role="tabpanel">
+        <div class="card shadow-sm border-0" style="border-radius:0 12px 12px 12px;overflow:hidden">
+          <div class="card-body p-4">
+            <h5 class="fw-bold mb-1">Overtime Upload</h5>
+            <p class="text-muted small mb-4">Upload an overtime Excel file to generate a formatted output with pay periods.</p>
+
+            <form id="overtime-form" method="POST" action="{{ url_for('bulk.overtime_parse') }}" enctype="multipart/form-data">
+
+              <!-- File picker -->
+              <div class="mb-4">
+                <label class="form-label fw-semibold small text-uppercase text-secondary" style="letter-spacing:.04em">Excel File</label>
+                <label id="ot-file-label" class="d-flex align-items-center gap-3 p-3 rounded-3 border border-2 border-dashed"
+                       style="cursor:pointer;border-color:#dee2e6!important;transition:border-color .15s">
+                  <div class="rounded-2 bg-primary bg-opacity-10 d-flex align-items-center justify-content-center flex-shrink-0"
+                       style="width:36px;height:36px">
+                    <i class="bi bi-file-earmark-spreadsheet text-primary"></i>
+                  </div>
+                  <div class="flex-grow-1 overflow-hidden">
+                    <div id="ot-file-name" class="text-muted small">Choose .xlsx or .xlsb file…</div>
+                  </div>
+                  <input type="file" name="file" accept=".xlsx,.xlsb" required
+                         class="d-none" id="ot-file-input"
+                         onchange="onFileChange(this, 'ot-file-name', 'ot-file-label')">
+                </label>
+              </div>
+
+              <div id="ot-error" class="alert alert-danger d-none mb-3"></div>
+
+              <!-- Submit -->
+              <button type="submit" id="ot-submit-btn" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
+                Parse File
+              </button>
+
+            </form>
           </div>
+        </div>
+      </div><!-- /overtime-panel -->
 
-          <!-- Submit -->
-          <button type="submit" class="btn btn-primary w-100 fw-semibold" style="border-radius:8px">
-            Parse File
-          </button>
-
-        </form>
-      </div>
-    </div>
-
+    </div><!-- /tab-content -->
   </div>
 </div>
 
-<!-- Parse progress overlay -->
+<!-- Parse progress overlay (Q360) -->
 <div id="parse-overlay" style="
   display:none;
   position:fixed;inset:0;
@@ -87,13 +147,31 @@
   </div>
 </div>
 
+<!-- Overtime processing overlay -->
+<div id="ot-overlay" style="
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);
+  z-index:10000;
+  align-items:center;
+  justify-content:center;
+  backdrop-filter:blur(2px)">
+  <div class="card shadow-lg border-0" style="width:340px;border-radius:16px;overflow:hidden">
+    <div class="card-body p-4 text-center">
+      <div class="spinner-border text-primary mb-3" role="status"></div>
+      <div class="fw-semibold">Generating Output File…</div>
+      <div class="text-muted small mt-1">Your download will start automatically.</div>
+    </div>
+  </div>
+</div>
+
 <div id="bulk-table" class="mt-4"></div>
 
 <script>
-function onFileChange(input) {
+function onFileChange(input, nameId, labelId) {
   const name = input.files[0]?.name || 'Choose .xlsx or .xlsb file…';
-  document.getElementById('file-name').textContent = name;
-  document.getElementById('file-label').style.borderColor = input.files[0] ? '#0d6efd' : '';
+  document.getElementById(nameId).textContent = name;
+  document.getElementById(labelId).style.borderColor = input.files[0] ? '#0d6efd' : '';
 }
 
 function pickPreset(mode) {
@@ -102,11 +180,13 @@ function pickPreset(mode) {
     const active = b.dataset.preset === mode;
     b.classList.toggle('btn-primary', active);
     b.classList.toggle('border-0', active);
+    b.classList.toggle('active', active);
     b.classList.toggle('btn-light', !active);
     b.classList.toggle('border', !active);
   });
 }
 
+// ── Q360 parse (streaming) ────────────────────────────────────────────────
 (function () {
   let timerInterval = null, startTime = 0;
 
@@ -143,13 +223,11 @@ function pickPreset(mode) {
   function injectHTML(html) {
     const container = document.getElementById('bulk-table');
     container.innerHTML = html;
-    // Re-execute inline scripts (innerHTML doesn't run them)
     container.querySelectorAll('script').forEach(old => {
       const s = document.createElement('script');
       s.textContent = old.textContent;
       old.parentNode.replaceChild(s, old);
     });
-    // Re-initialize HTMX on injected content so hx-post/hx-target work
     if (window.htmx) htmx.process(container);
     container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -189,7 +267,7 @@ function pickPreset(mode) {
         if (done) break;
         buf += decoder.decode(value, { stream: true });
         const parts = buf.split('\n\n');
-        buf = parts.pop(); // keep any incomplete trailing chunk
+        buf = parts.pop();
         for (const part of parts) {
           const line = part.trim();
           if (!line.startsWith('data: ')) continue;
@@ -197,22 +275,14 @@ function pickPreset(mode) {
           try { data = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (data.type === 'progress') {
-            // 10% base + up to 80% for Q360 fetching, leaving 10% for rendering
             const fetchPct = data.total > 0
               ? Math.round(10 + (data.done / data.total) * 80)
               : 10;
-            const sub = data.total > 0
-              ? `${data.done} / ${data.total} users`
-              : '';
+            const sub = data.total > 0 ? `${data.done} / ${data.total} users` : '';
             setProgress(fetchPct, data.user ? `Fetching \u2014 ${data.user}` : data.msg, sub);
-
           } else if (data.type === 'complete') {
             setProgress(95, 'Rendering table\u2026', '');
-            setTimeout(() => {
-              stopProgress();
-              injectHTML(data.html);
-            }, 200);
-
+            setTimeout(() => { stopProgress(); injectHTML(data.html); }, 200);
           } else if (data.type === 'error') {
             stopProgress();
             injectHTML(data.html);
@@ -224,6 +294,54 @@ function pickPreset(mode) {
       document.getElementById('bulk-table').innerHTML =
         `<div class="alert alert-danger">Stream error: ${err.message}</div>`;
     }
+  });
+})();
+
+// ── Overtime parse (file download) ───────────────────────────────────────
+(function () {
+  const form = document.getElementById('overtime-form');
+  const overlay = document.getElementById('ot-overlay');
+  const errDiv = document.getElementById('ot-error');
+  const btn = document.getElementById('ot-submit-btn');
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    errDiv.classList.add('d-none');
+    overlay.style.display = 'flex';
+    btn.disabled = true;
+
+    let resp;
+    try {
+      resp = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    } catch (err) {
+      overlay.style.display = 'none';
+      btn.disabled = false;
+      errDiv.textContent = 'Network error: ' + err.message;
+      errDiv.classList.remove('d-none');
+      return;
+    }
+
+    overlay.style.display = 'none';
+    btn.disabled = false;
+
+    if (!resp.ok) {
+      let msg = 'Server error ' + resp.status;
+      try { const j = await resp.json(); msg = j.error || msg; } catch {}
+      errDiv.textContent = msg;
+      errDiv.classList.remove('d-none');
+      return;
+    }
+
+    // Trigger download
+    const blob = await resp.blob();
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)/i);
+    const filename = m ? decodeURIComponent(m[1]) : 'overtime_output.xlsx';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
   });
 })();
 </script>

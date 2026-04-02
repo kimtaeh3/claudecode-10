@@ -1,9 +1,10 @@
+import io
 import json
 import re
 from datetime import datetime, timedelta
 
 import pandas as pd
-from flask import Blueprint, render_template, request, session
+from flask import Blueprint, render_template, request, send_file, session
 
 from app.routes.auth import login_required
 from app.services.q360 import Q360Service, CATEGORIES, COMPANIES
@@ -1038,6 +1039,171 @@ def _submit_stream(entries):
     except Exception as ex:
         yield _evt({'type': 'error', 'html':
                     f'<div class="alert alert-danger">Render error: {ex}</div>'})
+
+
+@bp.route('/overtime/parse', methods=['POST'])
+@login_required
+def overtime_parse():
+    """Parse overtime Excel and return a formatted output Excel file."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return ({'error': 'No file uploaded'}, 400)
+
+    try:
+        df = pd.read_excel(file, dtype=str)
+    except Exception as ex:
+        return ({'error': f'Could not read Excel file: {ex}'}, 400)
+
+    # Normalise column names (strip whitespace, case-insensitive match)
+    df.columns = [c.strip() for c in df.columns]
+    col_map = {c.lower(): c for c in df.columns}
+
+    def _col(name):
+        return col_map.get(name.lower())
+
+    required = ['id', 'start time', 'completion time', 'name', 'date', 'customer',
+                'on call support', 'hours']
+    missing = [r for r in required if _col(r) is None]
+    if missing:
+        return ({'error': f'Missing columns: {", ".join(missing)}'}, 400)
+
+    # Load pay period lookup: date -> (pay_period, pay_week)
+    db = get_db()
+    pp_rows = db.execute(
+        "SELECT pay_period, week1_start, week1_end, week2_start, week2_end FROM pay_period"
+    ).fetchall()
+
+    # Build fast lookup: YYYY-MM-DD -> (pay_period, week_num)
+    date_to_pp = {}
+    for row in pp_rows:
+        pp, w1s, w1e, w2s, w2e = row
+        from datetime import date as _date
+        w1s_d = _date.fromisoformat(w1s)
+        w1e_d = _date.fromisoformat(w1e)
+        w2s_d = _date.fromisoformat(w2s)
+        w2e_d = _date.fromisoformat(w2e)
+        d = w1s_d
+        while d <= w1e_d:
+            date_to_pp[d.isoformat()] = (pp, 1)
+            d += timedelta(days=1)
+        d = w2s_d
+        while d <= w2e_d:
+            date_to_pp[d.isoformat()] = (pp, 2)
+            d += timedelta(days=1)
+
+    OUTPUT_COLS = ['ID', 'Start time', 'Completion time', 'Name', 'Date',
+                   'Client', 'Work', '# of Extra Hours', 'Pay Period', 'Pay Week']
+
+    # Group rows by person name
+    from collections import defaultdict
+    by_person = defaultdict(list)
+
+    for _, row in df.iterrows():
+        raw_date = str(row[_col('date')]).strip()
+        # Try to parse the date robustly
+        parsed_date = None
+        for fmt in ('%m/%d/%Y', '%Y-%m-%d', '%m/%d/%y', '%d/%m/%Y'):
+            try:
+                parsed_date = datetime.strptime(raw_date, fmt).date()
+                break
+            except ValueError:
+                continue
+        if parsed_date is None:
+            try:
+                parsed_date = pd.to_datetime(raw_date, dayfirst=False).date()
+            except Exception:
+                pass
+
+        pay_period_label = ''
+        pay_week = ''
+        if parsed_date:
+            pp_info = date_to_pp.get(parsed_date.isoformat())
+            if pp_info:
+                pay_period_label, pay_week = pp_info
+
+        date_display = parsed_date.strftime('%-m/%-d/%Y') if parsed_date else raw_date
+
+        name = str(row[_col('name')]).strip()
+        by_person[name].append({
+            'ID':               str(row[_col('id')]).strip(),
+            'Start time':       str(row[_col('start time')]).strip(),
+            'Completion time':  str(row[_col('completion time')]).strip(),
+            'Name':             name,
+            'Date':             date_display,
+            'Client':           str(row[_col('customer')]).strip(),
+            'Work':             str(row[_col('on call support')]).strip(),
+            '# of Extra Hours': str(row[_col('hours')]).strip(),
+            'Pay Period':       pay_period_label,
+            'Pay Week':         str(pay_week),
+        })
+
+    # Build output workbook
+    wb = Workbook()
+    wb.remove(wb.active)  # remove default sheet
+
+    header_font = Font(bold=True)
+    header_fill = PatternFill('solid', fgColor='DDEBF7')
+    thin = Side(style='thin', color='BFBFBF')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for person_name, person_rows in sorted(by_person.items()):
+        # Sheet names max 31 chars, strip invalid chars
+        sheet_title = re.sub(r'[\\/*?:\[\]]', '', person_name)[:31]
+        ws = wb.create_sheet(title=sheet_title)
+
+        # Header row
+        for col_idx, col_name in enumerate(OUTPUT_COLS, 1):
+            cell = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
+
+        # Data rows
+        for row_idx, data_row in enumerate(person_rows, 2):
+            for col_idx, col_name in enumerate(OUTPUT_COLS, 1):
+                val = data_row[col_name]
+                # Try numeric for hours, pay week
+                if col_name in ('# of Extra Hours', 'Pay Week'):
+                    try:
+                        val = int(val) if val != '' else val
+                    except ValueError:
+                        try:
+                            val = float(val)
+                        except ValueError:
+                            pass
+                cell = ws.cell(row=row_idx, column=col_idx, value=val)
+                cell.border = border
+                cell.alignment = Alignment(horizontal='left')
+
+        # Auto-fit column widths
+        for col_idx, col_name in enumerate(OUTPUT_COLS, 1):
+            max_len = len(col_name)
+            for row_idx in range(2, ws.max_row + 1):
+                v = ws.cell(row=row_idx, column=col_idx).value
+                if v is not None:
+                    max_len = max(max_len, len(str(v)))
+            ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 40)
+
+    if not wb.sheetnames:
+        return ({'error': 'No data rows found in file'}, 400)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from urllib.parse import quote
+    fname = 'overtime_output.xlsx'
+    return send_file(
+        buf,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=fname,
+    )
 
 
 @bp.route('/save-username', methods=['POST'])
