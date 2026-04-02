@@ -1070,24 +1070,60 @@ def overtime_parse():
     # Normalise column names (strip whitespace, case-insensitive match)
     df.columns = [str(c).strip() for c in df.columns]
     col_map = {c.lower(): c for c in df.columns}
+    cols = list(df.columns)  # ordered list for index lookups
 
     def _col(name):
         return col_map.get(name.lower())
 
-    # Positional fallback: if name-based lookup fails, use fixed column indices
-    # matching the known export format (Image #6):
-    # 0=ID, 1=Start time, 2=Completion time, 3=Email, 4=Name, 5=Name2,
-    # 6=Date, 7=Customer, 8=ON CALL SUPPORT, 9=Hours
-    _POS = {
-        'id': 0, 'start time': 1, 'completion time': 2, 'email': 3,
-        'name': 4, 'name2': 5, 'date': 6, 'customer': 7,
-        'on call support': 8, 'hours': 9,
-    }
+    # Heuristic detection for columns whose headers are wrong/data-values:
+    # - Date column:   header that can be parsed as a date (e.g. "04/03/2026")
+    # - Client column: column immediately to the right of the date column
+    # - Hours column:  header that is a plain number (e.g. "4")
+    _detected = {}
+    for i, c in enumerate(cols):
+        cl = c.lower()
+        # Already found by name
+        if cl in ('date', 'customer', 'client', 'hours'):
+            continue
+        # Date-like header?
+        if 'date' not in _detected:
+            try:
+                pd.to_datetime(c, dayfirst=False)
+                _detected['date'] = c
+                if i + 1 < len(cols):
+                    _detected['customer'] = cols[i + 1]
+                continue
+            except Exception:
+                pass
+        # Numeric header → Hours
+        if 'hours' not in _detected:
+            try:
+                float(c)
+                _detected['hours'] = c
+            except ValueError:
+                pass
+
+    def _col_or_detected(name):
+        """Return actual column label for a logical field name."""
+        found = _col(name)
+        if found is not None:
+            return found
+        # alias: 'customer' and 'client' are the same field
+        if name.lower() == 'customer':
+            found = _col('client') or _detected.get('customer')
+        elif name.lower() == 'client':
+            found = _col('customer') or _detected.get('customer')
+        else:
+            found = _detected.get(name.lower())
+        return found
 
     def _get(row, name):
-        col = _col(name)
-        if col is not None:
+        col = _col_or_detected(name)
+        if col is not None and col in row.index:
             return row[col]
+        # Last-resort positional fallback (original format: col 6=date,7=customer,9=hours)
+        _POS = {'id':0,'start time':1,'completion time':2,'name':4,
+                'date':6,'customer':7,'on call support':8,'hours':9}
         idx = _POS.get(name.lower())
         if idx is not None and idx < len(row):
             return row.iloc[idx]
