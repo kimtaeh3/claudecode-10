@@ -87,7 +87,7 @@ def create_app():
         # Always sync from the authoritative xlsx if present (INSERT OR REPLACE so
         # stale algorithmic rows get corrected on every restart).
         import os as _os
-        _xlsx_path = _os.path.join(_os.path.dirname(__file__), '..', 'migrations', '2026 pay periods .xlsx')
+        _xlsx_path = _os.path.join(_os.path.dirname(__file__), '..', 'File', '2026 pay periods .xlsx')
         if _os.path.exists(_xlsx_path):
             import pandas as _pd
             _ppdf = _pd.read_excel(_xlsx_path, dtype=str).dropna(subset=['Pay period'])
