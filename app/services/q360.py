@@ -163,7 +163,7 @@ class Q360Service:
                      target_user_id: str = None, category: str = None,
                      task_data: dict = None) -> dict:
         # Q360 TIMEBILL.USERID column is VARCHAR(15) — truncate to match DB schema
-        uid = (target_user_id or self.user_id)[:15]
+        uid = (target_user_id or self.user_id).upper()[:15]
         cookies = {'cookies_are': 'working'}
         headers = {
             'Connection': 'keep-alive',
