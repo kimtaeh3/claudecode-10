@@ -1199,14 +1199,22 @@ function _renderCompareGraph() {
   let selectedUsers = (_fcUsers || []).filter(u => checked.includes(u.username));
   if (selectedUsers.length === 0) return;
 
-  // Apply threshold filter: keep users who dip below the selected threshold
+  // Apply threshold filter using same aggregation as current view
   const groups0 = _mergePartialBoundaryWeeks(_fcWeeks);
   if (_cgThreshold !== null) {
     const lo = _cgThreshold === 40 ? 0 : _cgThreshold === 60 ? 40 : 60;
     const hi = _cgThreshold;
     selectedUsers = selectedUsers.filter(u => {
-      const vals = groups0.map(g => g.avail ? g.keys.reduce((s,k)=>s+(u.week_data[k]?.billable||0),0)/g.avail*100 : null);
-      const min = Math.min(...vals.filter(v=>v!==null));
+      let vals;
+      if (_cgView === 'week') {
+        vals = groups0.map(g => g.avail ? g.keys.reduce((s,k)=>s+(u.week_data[k]?.billable||0),0)/g.avail*100 : null);
+      } else {
+        const mm = _aggregateToMonths(_fcWeeks, wk => ({ bill: u.week_data[wk.key]?.billable||0 }));
+        vals = Object.keys(mm).sort().map(k => mm[k].avail ? mm[k].vals.bill/mm[k].avail*100 : null);
+      }
+      const pts = vals.filter(v => v !== null);
+      if (!pts.length) return false;
+      const min = Math.min(...pts);
       return min < hi && (_cgThreshold === 40 || min >= lo);
     });
   }
@@ -1214,11 +1222,10 @@ function _renderCompareGraph() {
   let labels, datasets;
 
   if (_cgView === 'week') {
-    const groups = groups0;
-    labels = groups.map(g => g.label);
+    labels = groups0.map(g => g.label);
     datasets = selectedUsers.map((u, i) => ({
       label: u.employee || u.username,
-      data: groups.map(g => {
+      data: groups0.map(g => {
         if (_cgMetric === 'util') {
           if (!g.avail) return null;
           const bill = g.keys.reduce((s, k) => s + (u.week_data[k]?.billable || 0), 0);
