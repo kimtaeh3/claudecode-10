@@ -95,54 +95,29 @@ def table():
                     (uid_upper, uid_upper, '', entry.get('project', ''), entry.get('category', ''),
                      entry.get('company', ''), date_val, float(entry.get('hours', 0)))
                 )
-        # Auto-add/normalize usernames to team_member (lowercase username, title-case name)
-        # Deduplicate: if same username exists in different cases, keep most-recent data, drop the rest
+        # Auto-add team members from Q360 results, but only if not already present.
+        # Normalize: first letter + last word (uppercased) to catch middle-name variants.
+        # e.g. 'bsree vathasavai' normalizes to 'BVATHASAVAI' — same as existing BVATHASAVAI.
+        def _norm(u):
+            parts = u.strip().split()
+            if len(parts) <= 1:
+                return u.upper()
+            return (parts[0][0] + parts[-1]).upper()
+
+        existing = db.execute('SELECT username FROM team_member').fetchall()
+        existing_normalized = {_norm(r['username']) for r in existing}
+
         for uid, data in results.items():
-            if not uid or len(uid) < 2:
-                continue
-            if not data.get('userReport'):
+            if not uid or len(uid) < 2 or not data.get('userReport'):
                 continue
             uid_upper = uid.upper()
+            if _norm(uid_upper) in existing_normalized:
+                continue  # already exists (exact or middle-name variant)
             uid_name = ' '.join(p.capitalize() for p in uid_upper.lower().replace('.', ' ').replace('_', ' ').split())
-            # Find all team_member rows whose username uppercases to uid_upper
-            dupes = db.execute(
-                'SELECT id, username, name FROM team_member WHERE UPPER(username) = ?', (uid_upper,)
-            ).fetchall()
-            if not dupes:
-                db.execute(
-                    "INSERT INTO team_member (username, name, team) VALUES (?, ?, 'All')",
-                    (uid_upper, uid_name)
-                )
-            elif len(dupes) == 1:
-                row = dupes[0]
-                # Normalize username to uppercase; only overwrite name if it was auto-set (equals old username)
-                new_name = uid_name if row['name'].upper() == row['username'].upper() else row['name']
-                db.execute('UPDATE team_member SET username = ?, name = ? WHERE id = ?',
-                           (uid_upper, new_name, row['id']))
-                if row['username'] != uid_upper:
-                    db.execute('UPDATE bulk_hours SET username = ? WHERE username = ?',
-                               (uid_upper, row['username']))
-            else:
-                # Multiple dupes — pick the one with most recent bulk_hours date, delete the rest
-                best_id = None
-                best_date = None
-                for row in dupes:
-                    latest = db.execute(
-                        'SELECT MAX(date) as d FROM bulk_hours WHERE username = ?', (row['username'],)
-                    ).fetchone()
-                    row_date = latest['d'] if latest else None
-                    if best_date is None or (row_date and row_date > best_date):
-                        best_id = row['id']
-                        best_date = row_date
-                for row in dupes:
-                    if row['id'] != best_id:
-                        db.execute('UPDATE bulk_hours SET username = ? WHERE username = ?',
-                                   (uid_upper, row['username']))
-                        db.execute('DELETE FROM team_member WHERE id = ?', (row['id'],))
-                best_row = next(r for r in dupes if r['id'] == best_id)
-                new_name = uid_name if best_row['name'].upper() == best_row['username'].upper() else best_row['name']
-                db.execute('UPDATE team_member SET username = ?, name = ? WHERE id = ?',
-                           (uid_upper, new_name, best_id))
+            db.execute("INSERT INTO team_member (username, name, team) VALUES (?, ?, 'All')",
+                       (uid_upper, uid_name))
+            existing_normalized.add(uid_upper)  # prevent double-insert within same batch
+
         db.commit()
     except Exception:
         pass  # DB failure must not break the hours view

@@ -1264,6 +1264,44 @@ def overtime_parse():
             'Pay Week':         str(pay_week),
         })
 
+    # Persist processed records to DB
+    db = get_db()
+    db.execute('''CREATE TABLE IF NOT EXISTS overtime_record (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id       TEXT,
+        name            TEXT NOT NULL,
+        start_time      TEXT,
+        completion_time TEXT,
+        date            TEXT,
+        client          TEXT,
+        work            TEXT,
+        extra_hours     REAL,
+        pay_period      TEXT,
+        pay_week        INTEGER,
+        submitted_by    TEXT,
+        parsed_at       TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )''')
+    submitted_by = session.get('user_id', '')
+    for person_rows in by_person.values():
+        for r in person_rows:
+            try:
+                eh = float(r['# of Extra Hours']) if r['# of Extra Hours'] not in ('', 'nan') else None
+            except (ValueError, TypeError):
+                eh = None
+            try:
+                pw = int(r['Pay Week']) if r['Pay Week'] not in ('', 'nan') else None
+            except (ValueError, TypeError):
+                pw = None
+            db.execute(
+                '''INSERT INTO overtime_record
+                   (source_id, name, start_time, completion_time, date, client, work,
+                    extra_hours, pay_period, pay_week, submitted_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                (r['ID'], r['Name'], r['Start time'], r['Completion time'],
+                 r['Date'], r['Client'], r['Work'], eh, r['Pay Period'], pw, submitted_by)
+            )
+    db.commit()
+
     # Build output workbook
     wb = Workbook()
     wb.remove(wb.active)  # remove default sheet

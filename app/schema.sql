@@ -112,6 +112,23 @@ CREATE TABLE IF NOT EXISTS pay_period (
     week2_end   TEXT NOT NULL      -- YYYY-MM-DD (Sunday)
 );
 
+-- Overtime records: processed output rows saved on each parse
+CREATE TABLE IF NOT EXISTS overtime_record (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id       TEXT,               -- ID from source form
+    name            TEXT NOT NULL,
+    start_time      TEXT,
+    completion_time TEXT,
+    date            TEXT,               -- display date e.g. 2/12/2026
+    client          TEXT,
+    work            TEXT,
+    extra_hours     REAL,
+    pay_period      TEXT,
+    pay_week        INTEGER,
+    submitted_by    TEXT,               -- logged-in user who ran the parse
+    parsed_at       TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
 -- Forecast weeks
 CREATE TABLE IF NOT EXISTS forecast_week (
     forecast_week_id INTEGER PRIMARY KEY AUTOINCREMENT,
