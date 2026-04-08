@@ -23,6 +23,13 @@ def init_db():
     db = get_db()
     with current_app.open_resource('schema.sql') as f:
         db.executescript(f.read().decode('utf-8'))
+    # Migrate existing team_member table: add first/middle/last name columns if absent
+    for col in ('first_name', 'middle_name', 'last_name'):
+        try:
+            db.execute(f"ALTER TABLE team_member ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+            db.commit()
+        except Exception:
+            pass  # column already exists
 
 
 @click.command('init-db')

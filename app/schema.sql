@@ -8,11 +8,14 @@ CREATE TABLE IF NOT EXISTS login_log (
 
 -- Team members (replaces accounts.csv)
 CREATE TABLE IF NOT EXISTS team_member (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT    NOT NULL UNIQUE,
-    name     TEXT    NOT NULL DEFAULT '',
-    team     TEXT    NOT NULL,
-    email    TEXT
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    username    TEXT    NOT NULL UNIQUE,
+    first_name  TEXT    NOT NULL DEFAULT '',
+    middle_name TEXT    NOT NULL DEFAULT '',
+    last_name   TEXT    NOT NULL DEFAULT '',
+    name        TEXT    NOT NULL DEFAULT '',  -- full name (first [middle] last), kept for bulk matching
+    team        TEXT    NOT NULL,
+    email       TEXT
 );
 
 -- Users (for forecasting joins)

@@ -21,9 +21,19 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body pt-1">
-        <div class="mb-2">
-          <input type="text" class="form-control form-control-sm" id="add-name"
-                 placeholder="Full name" autocomplete="off">
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <input type="text" class="form-control form-control-sm" id="add-first-name"
+                   placeholder="First name" autocomplete="off">
+          </div>
+          <div class="col-4">
+            <input type="text" class="form-control form-control-sm" id="add-middle-name"
+                   placeholder="Middle" autocomplete="off">
+          </div>
+          <div class="col-4">
+            <input type="text" class="form-control form-control-sm" id="add-last-name"
+                   placeholder="Last name" autocomplete="off">
+          </div>
         </div>
         <div class="mb-2">
           <input type="text" class="form-control form-control-sm" id="add-username"
@@ -64,7 +74,9 @@
 let _addMemberModal = null;
 
 function openAddMemberModal() {
-  document.getElementById('add-name').value = '';
+  document.getElementById('add-first-name').value = '';
+  document.getElementById('add-middle-name').value = '';
+  document.getElementById('add-last-name').value = '';
   document.getElementById('add-username').value = '';
   document.getElementById('add-team').value = '';
   document.getElementById('add-member-type').value = 'Employee (100%)';
@@ -81,7 +93,9 @@ function openAddMemberModal() {
 }
 
 function saveAddMember() {
-  const name     = document.getElementById('add-name').value.trim();
+  const firstName  = document.getElementById('add-first-name').value.trim();
+  const middleName = document.getElementById('add-middle-name').value.trim();
+  const lastName   = document.getElementById('add-last-name').value.trim();
   const username = document.getElementById('add-username').value.trim();
   const team     = document.getElementById('add-team').value.trim();
   const email    = document.getElementById('add-email').value.trim();
@@ -93,7 +107,9 @@ function saveAddMember() {
   }
   err.style.display = 'none';
   const fd = new FormData();
-  fd.append('name', name);
+  fd.append('first_name', firstName);
+  fd.append('middle_name', middleName);
+  fd.append('last_name', lastName);
   fd.append('username', username);
   fd.append('team', team);
   fd.append('member_type', document.getElementById('add-member-type').value);

@@ -56,11 +56,19 @@ def users():
                            contractor_allocs=_contractor_allocs(db))
 
 
+def _build_name(first, middle, last):
+    parts = [p for p in [first, middle, last] if p]
+    return ' '.join(parts)
+
+
 @bp.route('/users/add', methods=['POST'])
 @login_required
 def add_user():
     username = request.form['username'].strip().upper()
-    name = request.form.get('name', '').strip()
+    first_name  = request.form.get('first_name', '').strip()
+    middle_name = request.form.get('middle_name', '').strip()
+    last_name   = request.form.get('last_name', '').strip()
+    name = _build_name(first_name, middle_name, last_name)
     team = request.form['team'].strip()
     email = request.form.get('email', '').strip()
     member_type = request.form.get('member_type', 'Employee (100%)').strip()
@@ -81,8 +89,10 @@ def add_user():
         if existing['username'].upper() == username:
             return ('Username already exists', 409)
         return (f'Name already exists (as {existing["username"]})', 409)
-    db.execute('INSERT INTO team_member (username, name, team, email, member_type) VALUES (?, ?, ?, ?, ?)',
-               (username, name, team, email or None, member_type))
+    db.execute(
+        'INSERT INTO team_member (username, first_name, middle_name, last_name, name, team, email, member_type) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (username, first_name, middle_name, last_name, name, team, email or None, member_type))
     db.commit()
     if request.headers.get('HX-Request'):
         members = db.execute('SELECT * FROM team_member ORDER BY team, username').fetchall()
@@ -95,18 +105,24 @@ def add_user():
 @bp.route('/users/edit/<int:member_id>', methods=['POST'])
 @login_required
 def edit_user(member_id):
-    username = request.form.get('username', '').strip().upper()
-    name = request.form.get('name', '').strip()
-    team = request.form.get('team', '').strip()
-    email = request.form.get('email', '').strip()
+    username    = request.form.get('username', '').strip().upper()
+    first_name  = request.form.get('first_name', '').strip()
+    middle_name = request.form.get('middle_name', '').strip()
+    last_name   = request.form.get('last_name', '').strip()
+    name        = _build_name(first_name, middle_name, last_name)
+    team        = request.form.get('team', '').strip()
+    email       = request.form.get('email', '').strip()
     member_type = request.form.get('member_type', 'Employee (100%)').strip()
     start_date  = request.form.get('start_date', '').strip() or None
     end_date    = request.form.get('end_date', '').strip() or None
     notes       = request.form.get('notes', '').strip() or None
     db = get_db()
     if username and team:
-        db.execute('UPDATE team_member SET username=?, name=?, team=?, email=?, member_type=?, start_date=?, end_date=?, notes=? WHERE id=?',
-                   (username, name, team, email or None, member_type, start_date, end_date, notes, member_id))
+        db.execute(
+            'UPDATE team_member SET username=?, first_name=?, middle_name=?, last_name=?, name=?, '
+            'team=?, email=?, member_type=?, start_date=?, end_date=?, notes=? WHERE id=?',
+            (username, first_name, middle_name, last_name, name,
+             team, email or None, member_type, start_date, end_date, notes, member_id))
         # Save contractor allocations
         try:
             db.execute('DELETE FROM contractor_allocation WHERE member_id = ?', (member_id,))

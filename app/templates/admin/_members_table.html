@@ -39,7 +39,7 @@
       </td>
       <td class="text-end" style="white-space:nowrap">
         <button class="btn btn-outline-secondary btn-sm me-1"
-                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }}, {{ allocs|tojson }}, {{ (m.start_date or "")|tojson }}, {{ (m.end_date or "")|tojson }}, {{ (m.notes or "")|tojson }})'>
+                onclick='openEditMemberModal({{ m.id }}, {{ m.username|tojson }}, {{ (m.first_name or "")|tojson }}, {{ (m.middle_name or "")|tojson }}, {{ (m.last_name or "")|tojson }}, {{ m.team|tojson }}, {{ (m.email or "")|tojson }}, {{ (m.member_type or "Employee (100%)")|tojson }}, {{ allocs|tojson }}, {{ (m.start_date or "")|tojson }}, {{ (m.end_date or "")|tojson }}, {{ (m.notes or "")|tojson }})'>
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn btn-danger btn-sm"
@@ -67,9 +67,17 @@
       <div class="modal-body pt-1">
         <input type="hidden" id="edit-member-id">
         <div class="row g-2">
-          <div class="col-md-6">
-            <label class="form-label small mb-1">Full Name</label>
-            <input type="text" class="form-control form-control-sm" id="edit-member-name" placeholder="Full name">
+          <div class="col-md-4">
+            <label class="form-label small mb-1">First Name</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-first-name" placeholder="First name">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-1">Middle Name</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-middle-name" placeholder="Middle (optional)">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small mb-1">Last Name</label>
+            <input type="text" class="form-control form-control-sm" id="edit-member-last-name" placeholder="Last name">
           </div>
           <div class="col-md-6">
             <label class="form-label small mb-1">Username</label>
@@ -159,9 +167,11 @@ function updateAllocTotal() {
   el.style.color = (total > 100) ? '#dc3545' : '#6c757d';
 }
 
-function openEditMemberModal(id, username, name, team, email, memberType, allocs, startDate, endDate, notes) {
+function openEditMemberModal(id, username, firstName, middleName, lastName, team, email, memberType, allocs, startDate, endDate, notes) {
   document.getElementById('edit-member-id').value = id;
-  document.getElementById('edit-member-name').value = name || '';
+  document.getElementById('edit-member-first-name').value = firstName || '';
+  document.getElementById('edit-member-middle-name').value = middleName || '';
+  document.getElementById('edit-member-last-name').value = lastName || '';
   document.getElementById('edit-member-username').value = username;
   document.getElementById('edit-member-team').value = team;
   document.getElementById('edit-member-email').value = email || '';
@@ -203,7 +213,9 @@ function saveEditMember() {
     });
   }
   const fd = new FormData();
-  fd.append('name',                document.getElementById('edit-member-name').value.trim());
+  fd.append('first_name',          document.getElementById('edit-member-first-name').value.trim());
+  fd.append('middle_name',         document.getElementById('edit-member-middle-name').value.trim());
+  fd.append('last_name',           document.getElementById('edit-member-last-name').value.trim());
   fd.append('username',            document.getElementById('edit-member-username').value.trim());
   fd.append('team',                document.getElementById('edit-member-team').value.trim());
   fd.append('email',               document.getElementById('edit-member-email').value.trim());
