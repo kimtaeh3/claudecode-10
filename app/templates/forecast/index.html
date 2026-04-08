@@ -470,7 +470,7 @@ const _fcUsers = {{ users | tojson }};
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body pt-2">
-        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+        <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
           <button class="btn btn-sm btn-info active" id="cgTogUtil" onclick="cgSetMetric('util')" style="color:#fff">Util%</button>
           <button class="btn btn-sm btn-outline-secondary" id="cgTogHours" onclick="cgSetMetric('hours')">Total Hours</button>
           <div class="ms-auto btn-group btn-group-sm">
@@ -478,7 +478,14 @@ const _fcUsers = {{ users | tojson }};
             <button class="btn btn-secondary active" id="cgBtnMonth" onclick="cgSetView('month')">Months</button>
           </div>
         </div>
-        <canvas id="compareGraphCanvas" style="max-height:380px"></canvas>
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+          <span class="text-muted small">Show users who dip below:</span>
+          <button class="btn btn-sm btn-outline-danger" id="cgF40" onclick="cgToggleThreshold(40)">&lt;40%</button>
+          <button class="btn btn-sm btn-outline-warning" id="cgF60" onclick="cgToggleThreshold(60)">40–60%</button>
+          <button class="btn btn-sm btn-outline-secondary" id="cgF80" onclick="cgToggleThreshold(80)">60–80%</button>
+          <button class="btn btn-sm btn-outline-success" id="cgFAll" onclick="cgClearThreshold()">All</button>
+        </div>
+        <canvas id="compareGraphCanvas" style="max-height:360px"></canvas>
       </div>
     </div>
   </div>
@@ -1095,7 +1102,6 @@ function _renderUserGraph() {
   const datasets = [];
   if (_ugToggles.bill) datasets.push({ type: 'bar', label: 'Billable h', data: billData, backgroundColor: 'rgba(40,167,69,.7)', yAxisID: 'yHrs', order: 2 });
   if (_ugToggles.nb)   datasets.push({ type: 'bar', label: 'Non-Bill h', data: nbData,   backgroundColor: 'rgba(255,193,7,.7)',  yAxisID: 'yHrs', order: 3 });
-  datasets.push({ type: 'line', label: 'Avail h', data: availData, borderColor: 'rgba(108,117,125,.5)', backgroundColor: 'transparent', yAxisID: 'yHrs', borderDash: [5,4], pointRadius: 0, borderWidth: 1.5, order: 0 });
   if (_ugToggles.util) datasets.push({ type: 'line', label: 'Util%', data: utilData, borderColor: '#17a2b8', backgroundColor: 'rgba(23,162,184,.1)', yAxisID: 'yPct', tension: .3, pointRadius: 4, borderWidth: 2, order: 1, fill: true });
 
   const canvas = document.getElementById('userGraphCanvas');
@@ -1128,12 +1134,16 @@ let _cgModal = null;
 function openCompareGraph() {
   const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
   if (checked.length === 0) { alert('Select at least one user first.'); return; }
-  _cgView = 'month'; _cgMetric = 'util';
+  _cgView = 'month'; _cgMetric = 'util'; _cgThreshold = null;
   document.getElementById('cgBtnWeek').className = 'btn btn-outline-secondary';
   document.getElementById('cgBtnMonth').className = 'btn btn-secondary active';
   document.getElementById('cgTogUtil').className = 'btn btn-sm btn-info active';
   document.getElementById('cgTogUtil').style.color = '#fff';
   document.getElementById('cgTogHours').className = 'btn btn-sm btn-outline-secondary';
+  document.getElementById('cgF40').className = 'btn btn-sm btn-outline-danger';
+  document.getElementById('cgF60').className = 'btn btn-sm btn-outline-warning';
+  document.getElementById('cgF80').className = 'btn btn-sm btn-outline-secondary';
+  document.getElementById('cgFAll').className = 'btn btn-sm btn-success';
   _loadChartJs(() => {
     if (!_cgModal) _cgModal = new bootstrap.Modal(document.getElementById('compareGraphModal'));
     _cgModal.show();
@@ -1156,16 +1166,55 @@ function cgSetMetric(m) {
   _renderCompareGraph();
 }
 
+let _cgThreshold = null;  // null = all, number = max threshold to show
+
+function cgToggleThreshold(t) {
+  _cgThreshold = (_cgThreshold === t) ? null : t;
+  [40,60,80].forEach(v => {
+    const btn = document.getElementById('cgF' + v);
+    if (!btn) return;
+    const active = _cgThreshold === v;
+    btn.className = btn.className.replace(/btn-(outline-)?(danger|warning|secondary)/,
+      'btn-' + (active ? '' : 'outline-') + (v===40?'danger':v===60?'warning':'secondary'));
+  });
+  document.getElementById('cgFAll').className = _cgThreshold === null
+    ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-success';
+  _renderCompareGraph();
+}
+
+function cgClearThreshold() { cgToggleThreshold(null); _cgThreshold = null; _renderCompareGraph(); }
+
+function _userDipsBelow(u, groups, isWeek, threshold) {
+  // Returns true if any period's util% is below threshold
+  const pts = isWeek
+    ? groups.map(g => g.avail ? g.keys.reduce((s,k)=>s+(u.week_data[k]?.billable||0),0)/g.avail*100 : null)
+    : Object.keys(_aggregateToMonths(_fcWeeks, wk=>({bill:u.week_data[wk.key]?.billable||0}))).sort()
+        .map(k => { const mm=_aggregateToMonths(_fcWeeks,wk=>({bill:u.week_data[wk.key]?.billable||0}))[k]; return mm.avail?mm.vals.bill/mm.avail*100:null; });
+  return pts.some(v => v !== null && v < threshold);
+}
+
 function _renderCompareGraph() {
   if (!window.Chart) return;
   const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
-  const selectedUsers = (_fcUsers || []).filter(u => checked.includes(u.username));
+  let selectedUsers = (_fcUsers || []).filter(u => checked.includes(u.username));
   if (selectedUsers.length === 0) return;
+
+  // Apply threshold filter: keep users who dip below the selected threshold
+  const groups0 = _mergePartialBoundaryWeeks(_fcWeeks);
+  if (_cgThreshold !== null) {
+    const lo = _cgThreshold === 40 ? 0 : _cgThreshold === 60 ? 40 : 60;
+    const hi = _cgThreshold;
+    selectedUsers = selectedUsers.filter(u => {
+      const vals = groups0.map(g => g.avail ? g.keys.reduce((s,k)=>s+(u.week_data[k]?.billable||0),0)/g.avail*100 : null);
+      const min = Math.min(...vals.filter(v=>v!==null));
+      return min < hi && (_cgThreshold === 40 || min >= lo);
+    });
+  }
 
   let labels, datasets;
 
   if (_cgView === 'week') {
-    const groups = _mergePartialBoundaryWeeks(_fcWeeks);
+    const groups = groups0;
     labels = groups.map(g => g.label);
     datasets = selectedUsers.map((u, i) => ({
       label: u.employee || u.username,
