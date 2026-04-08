@@ -31,6 +31,25 @@ def init_db():
         except Exception:
             pass  # column already exists
 
+    # Backfill first/middle/last from existing name where not yet split
+    rows = db.execute(
+        "SELECT id, name FROM team_member WHERE name != '' AND first_name = '' AND last_name = ''"
+    ).fetchall()
+    for row in rows:
+        parts = row['name'].strip().split()
+        if len(parts) == 1:
+            first, middle, last = parts[0], '', ''
+        elif len(parts) == 2:
+            first, middle, last = parts[0], '', parts[1]
+        else:
+            first, middle, last = parts[0], ' '.join(parts[1:-1]), parts[-1]
+        db.execute(
+            "UPDATE team_member SET first_name=?, middle_name=?, last_name=? WHERE id=?",
+            (first, middle, last, row['id'])
+        )
+    if rows:
+        db.commit()
+
 
 @click.command('init-db')
 def init_db_command():
