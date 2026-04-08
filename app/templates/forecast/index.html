@@ -144,6 +144,7 @@
   <span class="d-inline-flex align-items-center gap-2 small px-2 py-1" style="border:1.5px solid #dc3545;border-radius:6px;color:#dc3545">
     <span id="user-sel-count"></span> user(s) selected
     <button type="button" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;padding:1px 8px" onclick="filterBySelectedUsers()">Filter</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" style="font-size:.72rem;padding:1px 8px" onclick="openCompareGraph()"><i class="bi bi-graph-up"></i> Graph</button>
     <button type="button" class="btn btn-link btn-sm p-0 text-danger" style="font-size:.75rem" onclick="clearUserSelection()">clear</button>
   </span>
 </div>
@@ -227,7 +228,7 @@
                {% if users_filter and u.username in users_filter.split(',') %}checked{% endif %}
                onchange="onUserCheckChange()"
                style="vertical-align:middle;cursor:pointer">
-        <span class="fw-bold">{{ u.employee }}</span>
+        <span class="fw-bold" style="cursor:pointer;text-decoration:underline dotted" onclick="openUserGraph('{{ u.username }}')" title="View utilization graph">{{ u.employee }}</span>
         <span class="text-muted fw-normal ms-1" style="font-size:.72rem">({{ u.username }})</span>
         {% if u.contractor_allocs %}
         <div style="margin-top:2px;white-space:normal">
@@ -429,6 +430,58 @@
     </tr>
   </tfoot>
 </table>
+</div>
+
+<script>
+const _fcWeeks = {{ weeks | tojson }};
+const _fcUsers = {{ users | tojson }};
+</script>
+
+{# ── Individual User Graph Modal ── #}
+<div class="modal fade" id="userGraphModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
+      <div class="modal-header border-0 pb-1" style="background:#2c3e50;color:#fff">
+        <h6 class="modal-title fw-semibold" id="userGraphTitle">Utilization History</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+          <button class="btn btn-sm btn-success active" id="ugTogBill" onclick="ugToggle('bill')">Billable h</button>
+          <button class="btn btn-sm btn-warning active" id="ugTogNb" onclick="ugToggle('nb')">Non-Bill h</button>
+          <button class="btn btn-sm btn-info active" id="ugTogUtil" onclick="ugToggle('util')" style="color:#fff">Util%</button>
+          <div class="ms-auto btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" id="ugBtnWeek" onclick="ugSetView('week')">Weeks</button>
+            <button class="btn btn-secondary active" id="ugBtnMonth" onclick="ugSetView('month')">Months</button>
+          </div>
+        </div>
+        <canvas id="userGraphCanvas" style="max-height:380px"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Comparative Graph Modal ── #}
+<div class="modal fade" id="compareGraphModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content border-0 shadow" style="border-radius:12px;overflow:hidden">
+      <div class="modal-header border-0 pb-1" style="background:#2c3e50;color:#fff">
+        <h6 class="modal-title fw-semibold">Comparative Utilization</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+          <button class="btn btn-sm btn-info active" id="cgTogUtil" onclick="cgSetMetric('util')" style="color:#fff">Util%</button>
+          <button class="btn btn-sm btn-outline-secondary" id="cgTogHours" onclick="cgSetMetric('hours')">Total Hours</button>
+          <div class="ms-auto btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" id="cgBtnWeek" onclick="cgSetView('week')">Weeks</button>
+            <button class="btn btn-secondary active" id="cgBtnMonth" onclick="cgSetView('month')">Months</button>
+          </div>
+        </div>
+        <canvas id="compareGraphCanvas" style="max-height:380px"></canvas>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -915,5 +968,228 @@ function saveRenameFilter() {
 })();
 
 // Date preset helpers are defined in app.js
+
+// ── Chart.js lazy loader ─────────────────────────────────────────────────────
+function _loadChartJs(cb) {
+  if (window.Chart) return cb();
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+  s.onload = cb;
+  document.head.appendChild(s);
+}
+
+// ── Data helpers ─────────────────────────────────────────────────────────────
+const _PALETTE = ['#3498db','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63'];
+
+function _aggregateToMonths(weeks, perWeekFn) {
+  const monthMap = {};
+  weeks.forEach((wk, i) => {
+    const mk = wk.month_key;
+    if (!monthMap[mk]) {
+      const [y, m] = mk.split('-');
+      monthMap[mk] = { label: new Date(y, m-1, 1).toLocaleString('en-US',{month:'short', year:'numeric'}), avail: 0, vals: {} };
+    }
+    monthMap[mk].avail += wk.avail;
+    const v = perWeekFn(wk, i);
+    Object.entries(v).forEach(([k, val]) => { monthMap[mk].vals[k] = (monthMap[mk].vals[k] || 0) + val; });
+  });
+  return monthMap;
+}
+
+// ── Individual user graph ─────────────────────────────────────────────────────
+let _ugChart = null;
+let _ugUsername = null;
+let _ugView = 'month';
+let _ugToggles = { bill: true, nb: true, util: true };
+let _ugModal = null;
+
+function openUserGraph(username) {
+  _ugUsername = username;
+  _ugView = 'month';
+  _ugToggles = { bill: true, nb: true, util: true };
+  const user = (_fcUsers || []).find(u => u.username === username);
+  if (!user) return;
+  document.getElementById('userGraphTitle').textContent = (user.employee || username) + ' — Utilization History';
+  ['ugTogBill','ugTogNb','ugTogUtil'].forEach(id => document.getElementById(id)?.classList.add('active'));
+  document.getElementById('ugBtnWeek').className = 'btn btn-outline-secondary';
+  document.getElementById('ugBtnMonth').className = 'btn btn-secondary active';
+  _loadChartJs(() => {
+    if (!_ugModal) _ugModal = new bootstrap.Modal(document.getElementById('userGraphModal'));
+    _ugModal.show();
+    document.getElementById('userGraphModal').addEventListener('shown.bs.modal', () => _renderUserGraph(), { once: true });
+  });
+}
+
+function ugToggle(key) {
+  _ugToggles[key] = !_ugToggles[key];
+  const ids = { bill: 'ugTogBill', nb: 'ugTogNb', util: 'ugTogUtil' };
+  document.getElementById(ids[key])?.classList.toggle('active', _ugToggles[key]);
+  _renderUserGraph();
+}
+
+function ugSetView(v) {
+  _ugView = v;
+  document.getElementById('ugBtnWeek').className = v === 'week' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+  document.getElementById('ugBtnMonth').className = v === 'month' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+  _renderUserGraph();
+}
+
+function _renderUserGraph() {
+  const user = (_fcUsers || []).find(u => u.username === _ugUsername);
+  if (!user || !window.Chart) return;
+
+  let labels, billData, nbData, utilData;
+
+  if (_ugView === 'week') {
+    labels = _fcWeeks.map(wk => wk.label + ' ' + wk.date);
+    billData = _fcWeeks.map(wk => user.week_data[wk.key]?.billable || 0);
+    nbData   = _fcWeeks.map(wk => user.week_data[wk.key]?.nonbillable || 0);
+    utilData = _fcWeeks.map(wk => {
+      const avail = wk.avail;
+      if (!avail) return null;
+      return +((( user.week_data[wk.key]?.billable || 0) / avail) * 100).toFixed(1);
+    });
+  } else {
+    const mm = _aggregateToMonths(_fcWeeks, wk => ({
+      bill: user.week_data[wk.key]?.billable || 0,
+      nb:   user.week_data[wk.key]?.nonbillable || 0,
+    }));
+    const keys = Object.keys(mm).sort();
+    labels   = keys.map(k => mm[k].label);
+    billData = keys.map(k => mm[k].vals.bill || 0);
+    nbData   = keys.map(k => mm[k].vals.nb || 0);
+    utilData = keys.map(k => {
+      const avail = mm[k].avail;
+      return avail ? +((mm[k].vals.bill / avail) * 100).toFixed(1) : null;
+    });
+  }
+
+  const datasets = [];
+  if (_ugToggles.bill) datasets.push({ type: 'bar', label: 'Billable h', data: billData, backgroundColor: 'rgba(40,167,69,.7)', yAxisID: 'yHrs', order: 2 });
+  if (_ugToggles.nb)   datasets.push({ type: 'bar', label: 'Non-Bill h', data: nbData,   backgroundColor: 'rgba(255,193,7,.7)',  yAxisID: 'yHrs', order: 3 });
+  if (_ugToggles.util) datasets.push({ type: 'line', label: 'Util%', data: utilData, borderColor: '#17a2b8', backgroundColor: 'rgba(23,162,184,.1)', yAxisID: 'yPct', tension: .3, pointRadius: 4, borderWidth: 2, order: 1, fill: true });
+
+  const canvas = document.getElementById('userGraphCanvas');
+  if (_ugChart) { _ugChart.destroy(); _ugChart = null; }
+  _ugChart = new Chart(canvas, {
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.yAxisID === 'yPct' ? ctx.dataset.label + ': ' + ctx.parsed.y + '%' : ctx.dataset.label + ': ' + ctx.parsed.y + 'h' } }
+      },
+      scales: {
+        x: { stacked: true },
+        yHrs: { type: 'linear', position: 'left', stacked: true, title: { display: true, text: 'Hours' }, beginAtZero: true },
+        yPct: { type: 'linear', position: 'right', title: { display: true, text: 'Util%' }, min: 0, max: 120, grid: { drawOnChartArea: false },
+                ticks: { callback: v => v + '%' } }
+      }
+    }
+  });
+}
+
+// ── Comparative graph ─────────────────────────────────────────────────────────
+let _cgChart = null;
+let _cgView = 'month';
+let _cgMetric = 'util';
+let _cgModal = null;
+
+function openCompareGraph() {
+  const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
+  if (checked.length === 0) { alert('Select at least one user first.'); return; }
+  _cgView = 'month'; _cgMetric = 'util';
+  document.getElementById('cgBtnWeek').className = 'btn btn-outline-secondary';
+  document.getElementById('cgBtnMonth').className = 'btn btn-secondary active';
+  document.getElementById('cgTogUtil').className = 'btn btn-sm btn-info active';
+  document.getElementById('cgTogUtil').style.color = '#fff';
+  document.getElementById('cgTogHours').className = 'btn btn-sm btn-outline-secondary';
+  _loadChartJs(() => {
+    if (!_cgModal) _cgModal = new bootstrap.Modal(document.getElementById('compareGraphModal'));
+    _cgModal.show();
+    document.getElementById('compareGraphModal').addEventListener('shown.bs.modal', () => _renderCompareGraph(), { once: true });
+  });
+}
+
+function cgSetView(v) {
+  _cgView = v;
+  document.getElementById('cgBtnWeek').className = v === 'week' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+  document.getElementById('cgBtnMonth').className = v === 'month' ? 'btn btn-secondary active' : 'btn btn-outline-secondary';
+  _renderCompareGraph();
+}
+
+function cgSetMetric(m) {
+  _cgMetric = m;
+  document.getElementById('cgTogUtil').className   = m === 'util'  ? 'btn btn-sm btn-info active'          : 'btn btn-sm btn-outline-secondary';
+  document.getElementById('cgTogUtil').style.color = m === 'util'  ? '#fff' : '';
+  document.getElementById('cgTogHours').className  = m === 'hours' ? 'btn btn-sm btn-secondary active'     : 'btn btn-sm btn-outline-secondary';
+  _renderCompareGraph();
+}
+
+function _renderCompareGraph() {
+  if (!window.Chart) return;
+  const checked = Array.from(document.querySelectorAll('.user-check:checked')).map(cb => cb.value);
+  const selectedUsers = (_fcUsers || []).filter(u => checked.includes(u.username));
+  if (selectedUsers.length === 0) return;
+
+  let labels, datasets;
+
+  if (_cgView === 'week') {
+    labels = _fcWeeks.map(wk => wk.label + ' ' + wk.date);
+    datasets = selectedUsers.map((u, i) => ({
+      label: u.employee || u.username,
+      data: _fcWeeks.map(wk => {
+        if (_cgMetric === 'util') {
+          const avail = wk.avail;
+          return avail ? +((( u.week_data[wk.key]?.billable || 0) / avail) * 100).toFixed(1) : null;
+        }
+        return u.week_data[wk.key]?.total || 0;
+      }),
+      borderColor: _PALETTE[i % _PALETTE.length],
+      backgroundColor: _PALETTE[i % _PALETTE.length] + '22',
+      tension: .3, pointRadius: 4, borderWidth: 2, fill: false,
+    }));
+  } else {
+    const allMonthMaps = selectedUsers.map(u =>
+      _aggregateToMonths(_fcWeeks, wk => ({ bill: u.week_data[wk.key]?.billable || 0, total: u.week_data[wk.key]?.total || 0 }))
+    );
+    const keys = Object.keys(allMonthMaps[0]).sort();
+    labels = keys.map(k => allMonthMaps[0][k].label);
+    datasets = selectedUsers.map((u, i) => ({
+      label: u.employee || u.username,
+      data: keys.map(k => {
+        const mm = allMonthMaps[i][k];
+        if (_cgMetric === 'util') return mm?.avail ? +((mm.vals.bill / mm.avail) * 100).toFixed(1) : null;
+        return mm?.vals.total || 0;
+      }),
+      borderColor: _PALETTE[i % _PALETTE.length],
+      backgroundColor: _PALETTE[i % _PALETTE.length] + '22',
+      tension: .3, pointRadius: 4, borderWidth: 2, fill: false,
+    }));
+  }
+
+  const canvas = document.getElementById('compareGraphCanvas');
+  if (_cgChart) { _cgChart.destroy(); _cgChart = null; }
+  _cgChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' }, tooltip: { callbacks: {
+        label: ctx => ctx.dataset.label + ': ' + ctx.parsed.y + (_cgMetric === 'util' ? '%' : 'h')
+      }}},
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: _cgMetric === 'util' ? 'Util%' : 'Hours' },
+             ticks: { callback: v => v + (_cgMetric === 'util' ? '%' : 'h') } }
+      }
+    }
+  });
+}
+
+// Clean up charts when modals close
+document.getElementById('userGraphModal')?.addEventListener('hidden.bs.modal', () => { if (_ugChart) { _ugChart.destroy(); _ugChart = null; } });
+document.getElementById('compareGraphModal')?.addEventListener('hidden.bs.modal', () => { if (_cgChart) { _cgChart.destroy(); _cgChart = null; } });
 </script>
 {% endblock %}
